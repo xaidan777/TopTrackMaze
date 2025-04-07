@@ -119,7 +119,7 @@ class MainMenuScene extends Phaser.Scene {
 
     preload() {
         console.log("Preloading Main Menu assets...");
-        this.load.image(MAIN_BG_KEY, 'assets/mainBG.jpg');
+        this.load.image(MAIN_BG_KEY, 'assets/MainBG.jpg');
         this.load.image(START_BUTTON_KEY, 'assets/STARTGAME.png');
     }
 
