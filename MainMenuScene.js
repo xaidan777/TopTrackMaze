@@ -8,12 +8,12 @@ class MainMenuScene extends Phaser.Scene {
     }
 
     preload() {
-        this.load.image('packshot', 'assets/MainBG.jpg'); // Замени на путь к твоему пэкшоту
-        this.load.image('STARTGAME', 'assets/STARTGAME.png');
-        this.load.image('HOW', 'assets/HOW.png');
-        this.load.image('CREATOR', 'assets/CREATOR.png');
-        this.load.image('howtoplay', 'assets/howtoplay.png'); // Картинка "Как играть" (728x728)
-        this.load.image('close', 'assets/close.png'); // Кнопка "Закрыть"
+        this.load.image('packshot', 'assets/MainBG.jpg?v=__GIT_HASH__'); // Замени на путь к твоему пэкшоту
+        this.load.image('STARTGAME', 'assets/STARTGAME.png?v=__GIT_HASH__');
+        this.load.image('HOW', 'assets/HOW.png?v=__GIT_HASH__');
+        this.load.image('CREATOR', 'assets/CREATOR.png?v=__GIT_HASH__');
+        this.load.image('howtoplay', 'assets/howtoplay.png?v=__GIT_HASH__'); // Картинка "Как играть" (728x728)
+        this.load.image('close', 'assets/close.png?v=__GIT_HASH__'); // Кнопка "Закрыть"
     }
 
     create() {

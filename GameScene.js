@@ -76,14 +76,14 @@ class GameScene extends Phaser.Scene {
     preload() {
         console.log("Preloading GameScene assets...");
         // Ассеты, не связанные напрямую с ArcController
-        this.load.image(CAR_PLAYER_KEY, 'assets/car_player.png');
-        this.load.image(SAND_TEXTURE_KEY, 'assets/sand_texture.jpg');
-        this.load.image(OBSTACLE_IMAGE_KEY, 'assets/block.png');
-        this.load.image(RESTART_BUTTON_KEY, 'assets/restart.png');
-        this.load.image(NEXT_LEVEL_BUTTON_KEY, 'assets/NEXTLEVEL.png');
-        this.load.image(FUEL_PICKUP_KEY, 'assets/fuel.png');
-        this.load.image(PORTAL_KEY, 'assets/portal.png');
-        this.load.image('arrow', 'assets/arrow.png');
+        this.load.image(CAR_PLAYER_KEY, 'assets/car_player.png?v=__GIT_HASH__');
+        this.load.image(SAND_TEXTURE_KEY, 'assets/sand_texture.jpg?v=__GIT_HASH__');
+        this.load.image(OBSTACLE_IMAGE_KEY, 'assets/block.png?v=__GIT_HASH__');
+        this.load.image(RESTART_BUTTON_KEY, 'assets/restart.png?v=__GIT_HASH__');
+        this.load.image(NEXT_LEVEL_BUTTON_KEY, 'assets/NEXTLEVEL.png?v=__GIT_HASH__');
+        this.load.image(FUEL_PICKUP_KEY, 'assets/fuel.png?v=__GIT_HASH__');
+        this.load.image(PORTAL_KEY, 'assets/portal.png?v=__GIT_HASH__');
+        this.load.image('arrow', 'assets/arrow.png?v=__GIT_HASH__');
     }
 
     create() {
