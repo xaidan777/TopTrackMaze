@@ -1,7 +1,3 @@
-// ==========================================
-// --- КОНСТАНТЫ И НАСТРОЙКИ (Обновленные) ---
-// ==========================================
-
 const GAME_VERSION = 'a1b2c3d'
 const GAME_WIDTH = 1024;
 const GAME_HEIGHT = 1024;
@@ -12,6 +8,13 @@ const GRID_CELL_SIZE = 32;
 const WORLD_SCALE = 2;
 const REAL_GAME_WIDTH = GAME_WIDTH * WORLD_SCALE; 
 const REAL_GAME_HEIGHT = GAME_HEIGHT * WORLD_SCALE;
+
+const SHADOW_COLOR = 0x000000; // Цвет тени (белый) - используем числовой формат для tint
+const SHADOW_ALPHA = 0.1;      // Прозрачность тени (50%)
+const SHADOW_OFFSET_Y = 5;     // Вертикальное смещение тени (в пикселях)
+const SHADOW_DEPTH_OFFSET = -1; // Насколько "ниже" основного спрайта рисовать тень
+
+const VIRTUAL_JOYSTICK_BLOCK_RADIUS = 10;
 
 // --- Цвета и прозрачность ---
 const COLOR_BRAKE       = 0xaaaaaa;
@@ -114,4 +117,5 @@ const FLASH_COLOR            = 0xff0000;
 const WIN_FLASH_COLOR        = 0x00ff00;
 const SHAKE_DURATION         = 300;
 const SHAKE_INTENSITY        = 0.01;
-const RESTART_DELAY          = 1000;
+const RESTART_DELAY          = 1000; 
+

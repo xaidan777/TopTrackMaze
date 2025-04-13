@@ -15,6 +15,8 @@ class ArcController {
 
     // --- Методы расчета и отрисовки состояния ---
 
+
+
     calculateArcGuiParams() {
         if (!this.car) return;
         // ... (код метода calculateArcGuiParams из старого GameScene) ...
@@ -359,23 +361,136 @@ class ArcController {
         return null;
     }
 
+     isPointNearArc(pointX, pointY, thresholdDistance) {
+        // --- START DEBUG LOGGING ---
+        console.log(`[DEBUG] isPointNearArc: Checking point (${pointX.toFixed(1)}, ${pointY.toFixed(1)}) with threshold ${thresholdDistance}`);
+        if (!this.car || !this.arcParams) {
+            console.log("[DEBUG] isPointNearArc: Car or arcParams missing, returning false.");
+            return false;
+        }
 
-    handlePointerMove(pointer) {
-        // ... (код метода handlePointerMove из старого GameScene, НО без проверок isMoving/levelComplete/gameOver) ...
-        // Эти проверки теперь делает сама сцена перед вызовом этого метода
-        // Скопируйте сюда логику метода handlePointerMove, начиная с:
-        // if (!this.trajectoryGraphics || !this.ghostCar || !this.controlArcGraphics) return;
-        // Используйте this.scene, this.car, this.getArcZoneForPoint, this.getSnapPoint..., this.drawControlArc,
-        // this.ghostCar, this.trajectoryGraphics, this.snapCursor, this.drawTrajectory,
-        // this.calculateTargetFromArcPoint
-        if (!this.trajectoryGraphics || !this.ghostCar || !this.controlArcGraphics || !this.car) return;
+        const carX = this.car.x;
+        const carY = this.car.y;
+        const dx = pointX - carX;
+        const dy = pointY - carY;
+        const distSqr = dx * dx + dy * dy;
+        const dist = Math.sqrt(distSqr);
+        const pointAngleRad = Math.atan2(dy, dx);
+        const carAngleRad = Phaser.Math.DegToRad(this.car.angle);
+        const currentSpeed = this.car.getData('speed') ?? MIN_SPEED;
+        const ap = this.arcParams;
+
+        console.log(`[DEBUG]   Car Pos: (${carX.toFixed(1)}, ${carY.toFixed(1)}), Speed: ${currentSpeed.toFixed(2)}`);
+        console.log(`[DEBUG]   Point Dist: ${dist.toFixed(1)}, AngleRad: ${pointAngleRad.toFixed(2)} (${Phaser.Math.RadToDeg(pointAngleRad).toFixed(1)} deg)`);
+
+        // Добавил проверку neutralRadius, так как он используется ниже
+        if (!ap || typeof ap.innerRadius !== 'number' || typeof ap.outerRadius !== 'number' || typeof ap.orientationRad !== 'number' || typeof ap.halfAngleRad !== 'number' || typeof ap.neutralRadius !== 'number') {
+             console.log("[DEBUG] isPointNearArc: Invalid arcParams (radius/angle/neutral missing?), returning false.", ap);
+             return false;
+        }
+
+        let isNear = false;
+
+        // --- Проверка передней арки ---
+        console.log(`[DEBUG]   Forward Arc Params: InnerR=${ap.innerRadius.toFixed(1)}, OuterR=${ap.outerRadius.toFixed(1)}, NeutralR=${ap.neutralRadius.toFixed(1)}, OrientRad=${ap.orientationRad.toFixed(2)}, HalfAngleRad=${ap.halfAngleRad.toFixed(2)}`);
+
+        if (ap.outerRadius > ap.innerRadius && ap.halfAngleRad > 0 && ap.innerRadius >= 0) {
+            const minRadiusCheck = Math.max(0, ap.innerRadius - thresholdDistance);
+            const maxRadiusCheck = ap.outerRadius + thresholdDistance;
+            const orientation = ap.orientationRad;
+            const baseHalfAngle = ap.halfAngleRad;
+
+            // *** НОВОЕ: Расчет углового буфера ***
+            // Приближение: угол, соответствующий thresholdDistance на нейтральном радиусе
+            // Добавляем минимальный буфер (напр. 10 град), если радиус очень мал
+            const angularBuffer = (ap.neutralRadius > 1) ? Math.atan(thresholdDistance / ap.neutralRadius) : Phaser.Math.DegToRad(10);
+            // Эффективный полуугол = базовый + буфер
+            const effectiveHalfAngle = baseHalfAngle + angularBuffer;
+            console.log(`[DEBUG]     Angular Buffer Calc: atan(${thresholdDistance} / ${ap.neutralRadius.toFixed(1)}) = ${angularBuffer.toFixed(2)} rad`);
+            console.log(`[DEBUG]     Effective Half Angle: ${baseHalfAngle.toFixed(2)} + ${angularBuffer.toFixed(2)} = ${effectiveHalfAngle.toFixed(2)}`);
+            // *** КОНЕЦ НОВОГО ***
+
+            const relativeAngleRadFwd = Phaser.Math.Angle.Wrap(pointAngleRad - orientation);
+
+            const checkRadius = dist >= minRadiusCheck && dist <= maxRadiusCheck;
+            // *** ИЗМЕНЕНО: Используем effectiveHalfAngle для проверки ***
+            const checkAngle = Math.abs(relativeAngleRadFwd) <= effectiveHalfAngle;
+
+            console.log(`[DEBUG]   Forward Check: MinR_Check=${minRadiusCheck.toFixed(1)}, MaxR_Check=${maxRadiusCheck.toFixed(1)}, RelAngle=${relativeAngleRadFwd.toFixed(2)} (vs Effective ${effectiveHalfAngle.toFixed(2)})`);
+            console.log(`[DEBUG]     Radius Check (${minRadiusCheck.toFixed(1)} <= ${dist.toFixed(1)} <= ${maxRadiusCheck.toFixed(1)}): ${checkRadius}`);
+            // Лог теперь использует effectiveHalfAngle
+            console.log(`[DEBUG]     Angle Check (|${relativeAngleRadFwd.toFixed(2)}| <= ${effectiveHalfAngle.toFixed(2)}): ${checkAngle}`);
+
+            if (checkRadius && checkAngle) {
+                console.log("[DEBUG]     => NEAR (Forward)");
+                isNear = true;
+            } else {
+                 console.log("[DEBUG]     => NOT NEAR (Forward)");
+            }
+        } else {
+            console.log("[DEBUG]   Forward Check: Skipped (invalid params or zero size)");
+        }
+
+        // --- Проверка задней арки (только если скорость минимальна) ---
+        if (!isNear && currentSpeed === MIN_SPEED) {
+            console.log("[DEBUG]   Checking Reverse Arc...");
+            const reverseOrientationRad = carAngleRad + Math.PI;
+            const baseHalfReverseAngleRad = Phaser.Math.DegToRad(REVERSE_ARC_ANGLE_DEG / 2);
+            const innerRRev = REVERSE_ARC_INNER_RADIUS;
+            const outerRRev = innerRRev + REVERSE_ARC_THICKNESS;
+            // Используем средний радиус для расчета буфера задней арки
+            const midRRev = innerRRev + REVERSE_ARC_THICKNESS / 2;
+
+            const minRadiusRevCheck = Math.max(0, innerRRev - thresholdDistance);
+            const maxRadiusRevCheck = outerRRev + thresholdDistance;
+            console.log(`[DEBUG]   Reverse Arc Params: InnerR=${innerRRev.toFixed(1)}, OuterR=${outerRRev.toFixed(1)}, OrientRad=${reverseOrientationRad.toFixed(2)}, HalfAngleRad=${baseHalfReverseAngleRad.toFixed(2)}`);
+
+             // *** НОВОЕ: Расчет углового буфера для задней арки ***
+            const angularBufferRev = (midRRev > 1) ? Math.atan(thresholdDistance / midRRev) : Phaser.Math.DegToRad(10);
+            const effectiveHalfAngleRev = baseHalfReverseAngleRad + angularBufferRev;
+            console.log(`[DEBUG]     Angular Buffer Calc (Rev): atan(${thresholdDistance} / ${midRRev.toFixed(1)}) = ${angularBufferRev.toFixed(2)} rad`);
+            console.log(`[DEBUG]     Effective Half Angle (Rev): ${baseHalfReverseAngleRad.toFixed(2)} + ${angularBufferRev.toFixed(2)} = ${effectiveHalfAngleRev.toFixed(2)}`);
+             // *** КОНЕЦ НОВОГО ***
+
+            const relativeAngleRadRev = Phaser.Math.Angle.Wrap(pointAngleRad - reverseOrientationRad);
+
+            const checkRadiusRev = dist >= minRadiusRevCheck && dist <= maxRadiusRevCheck;
+            // *** ИЗМЕНЕНО: Используем effectiveHalfAngleRev для проверки ***
+            const checkAngleRev = Math.abs(relativeAngleRadRev) <= effectiveHalfAngleRev;
+
+            console.log(`[DEBUG]   Reverse Check: MinR_Check=${minRadiusRevCheck.toFixed(1)}, MaxR_Check=${maxRadiusRevCheck.toFixed(1)}, RelAngle=${relativeAngleRadRev.toFixed(2)} (vs Effective ${effectiveHalfAngleRev.toFixed(2)})`);
+            console.log(`[DEBUG]     Radius Check (${minRadiusRevCheck.toFixed(1)} <= ${dist.toFixed(1)} <= ${maxRadiusRevCheck.toFixed(1)}): ${checkRadiusRev}`);
+            // Лог теперь использует effectiveHalfAngleRev
+            console.log(`[DEBUG]     Angle Check (|${relativeAngleRadRev.toFixed(2)}| <= ${effectiveHalfAngleRev.toFixed(2)}): ${checkAngleRev}`);
+
+            if (checkRadiusRev && checkAngleRev) {
+                console.log("[DEBUG]     => NEAR (Reverse)");
+                isNear = true;
+            } else {
+                 console.log("[DEBUG]     => NOT NEAR (Reverse)");
+            }
+        } else if (!isNear) {
+             console.log("[DEBUG]   Reverse Check: Skipped (already near or speed > min)");
+        }
+
+        console.log(`[DEBUG] isPointNearArc: Final Result = ${isNear}`);
+        // --- END DEBUG LOGGING ---
+        return isNear;
+    }
+
+
+        handlePointerMove(pointer) {
+        if (!this.trajectoryGraphics || !this.ghostCar || !this.controlArcGraphics || !this.car) {
+            return;
+        }
+
         const pointerX = pointer.worldX;
         const pointerY = pointer.worldY;
 
         let snapResult = null;
         let newZone = this.getArcZoneForPoint(pointerX, pointerY);
 
-        // Если указатель вне арки – проверяем, попадает ли он в магнитную зону.
+        // Если указатель вне арки – проверяем, попадает ли он в магнитную зону
         if (!newZone) {
             // Если машина стоит на месте, проверяем реверс-арку
             if (this.car.getData('speed') === MIN_SPEED) {
@@ -384,7 +499,7 @@ class ArcController {
                     newZone = snapResult.zone;
                 }
             }
-            // Если не нашли в реверсе (или машина не стоит), проверяем основную арку
+            // Если не нашли в реверсе (или машина не стоит), проверяем основную
             if (!newZone) {
                 snapResult = this.getSnapPointForForwardArc(pointerX, pointerY);
                 if (snapResult) {
@@ -393,30 +508,44 @@ class ArcController {
             }
         }
 
-        // Если зона изменилась, обновляем ее и перерисовываем дугу
-        if (newZone !== this.hoveredArcZone) {
-            this.hoveredArcZone = newZone;
-            this.drawControlArc(); // Перерисовываем дугу с новым ховером
+        // --- Проверяем, нужно ли нам в принципе очищать арку ---
+        // Если мы *не* нашли никакой зоны/снап, но при этом GameScene говорит, что
+        // мы "тащим из пустого места" и ЛКМ ещё зажата – можно оставить курсор на месте,
+        // чтобы не пропадал визуально. Иначе будет "моргание".
+        const isDraggingEmpty = this.scene?.draggingFromEmptySpace && pointer.isDown;
+        let keepCursor = false;
+
+        if (!newZone && isDraggingEmpty) {
+            // Говорим "не чисти"
+            keepCursor = true;
         }
 
-        // Если курсор находится в активной зоне (или был примагничен)
-        if (this.hoveredArcZone) {
-            // Прячем системный курсор (можно настроить)
-            // this.scene.game.canvas.style.cursor = 'none';
-             this.scene.game.canvas.style.cursor = 'pointer'; // Или 'pointer'
+        if (newZone !== this.hoveredArcZone) {
+            this.hoveredArcZone = newZone;
+            this.drawControlArc();
+        }
 
-            // Определяем точку для отображения (либо реальный курсор, либо точка примагничивания)
-            let displayX = (snapResult && snapResult.snapX !== undefined) ? snapResult.snapX : pointerX;
-            let displayY = (snapResult && snapResult.snapY !== undefined) ? snapResult.snapY : pointerY;
+        // Если у нас есть зона (или мы "держим" курсор принудительно)
+        if (this.hoveredArcZone || keepCursor) {
+            this.scene.game.canvas.style.cursor = 'pointer';
 
-            // Рисуем кастомный курсор (белую точку) в точке отображения
+            // Определяем точку для отображения (либо реальный курсор, либо snap-координаты)
+            let displayX = pointerX;
+            let displayY = pointerY;
+
+            if (snapResult && snapResult.snapX !== undefined) {
+                displayX = snapResult.snapX;
+                displayY = snapResult.snapY;
+            }
+
+            // Рисуем курсор
             if (this.snapCursor) {
                 this.snapCursor.clear();
                 this.snapCursor.fillStyle(0xffffff, 1);
-                this.snapCursor.fillCircle(displayX, displayY, 3.5); // Немного увеличил
+                this.snapCursor.fillCircle(displayX, displayY, 3.5);
             }
 
-            // --- Отображаем призрак и траекторию ---
+            // И показываем призрак
             let targetX, targetY, targetAngleRad;
             const carAngleRad = Phaser.Math.DegToRad(this.car.angle);
 
@@ -425,39 +554,38 @@ class ArcController {
                 const reverseAngleRad = carAngleRad + Math.PI;
                 targetX = this.car.x + Math.cos(reverseAngleRad) * REVERSE_MOVE_DISTANCE;
                 targetY = this.car.y + Math.sin(reverseAngleRad) * REVERSE_MOVE_DISTANCE;
-                targetAngleRad = carAngleRad; // Машина не поворачивается при реверсе
+                targetAngleRad = carAngleRad;
             } else {
-                // Для остальных зон цель зависит от точки на дуге (displayX, displayY)
-                const targetData = this.calculateTargetFromArcPoint(displayX, displayY);
-                if (targetData) {
-                    targetX = targetData.targetX;
-                    targetY = targetData.targetY;
-                    targetAngleRad = targetData.targetAngleRad;
-                } else {
-                    // Если не удалось рассчитать цель, скрываем все
+                // Для остальных зон цель зависит от точки
+                const td = this.calculateTargetFromArcPoint(displayX, displayY);
+                if (!td) {
+                    // Если не удалось
                     this.ghostCar.setVisible(false);
                     this.trajectoryGraphics.clear();
                     return;
                 }
+                targetX = td.targetX;
+                targetY = td.targetY;
+                targetAngleRad = td.targetAngleRad;
             }
 
-            // Обновляем позицию и угол призрака и делаем его видимым
             if (this.ghostCar) {
                 this.ghostCar.setPosition(targetX, targetY)
                     .setAngle(Phaser.Math.RadToDeg(targetAngleRad))
                     .setVisible(true);
             }
-            // Рисуем траекторию
+
             this.drawTrajectory(this.car.x, this.car.y, targetX, targetY);
 
-        } else { // Если курсор вне активной зоны
+        } else {
+            // Если не в зоне/не держим, скрываем призрака, очищаем траекторию, курсор
             if (this.ghostCar) this.ghostCar.setVisible(false);
             if (this.trajectoryGraphics) this.trajectoryGraphics.clear();
             if (this.snapCursor) this.snapCursor.clear();
             if (this.scene.game.canvas) this.scene.game.canvas.style.cursor = 'default';
         }
-
     }
+
 
 
     // --- Методы расчета движения ---
@@ -546,12 +674,8 @@ class ArcController {
 
     // --- Методы инициации движения ---
 
-    // Обрабатывает клик, определяет зону и вызывает соответствующий метод движения
-    // Возвращает данные о ходе для истории или null, если ход не начат
-    handleSceneClick(pointer) {
-        // ... (код метода handleSceneClick из старого GameScene, НО без проверок isMoving/fuel/gameOver) ...
-        // Эти проверки делает сцена перед вызовом
-        // Должен возвращать объект с данными для истории или null
+
+        handleSceneClick(pointer) {
         const clickX = pointer.worldX;
         const clickY = pointer.worldY;
 
@@ -561,55 +685,62 @@ class ArcController {
 
         // Определяем зону клика, учитывая "примагничивание"
         let clickArcZone = this.getArcZoneForPoint(clickX, clickY);
-        if (!clickArcZone) {
-            // Если вне арки – проверяем магнитный эффект для реверс-арки (если applicable)
-            if (this.car.getData('speed') === MIN_SPEED) {
-                snapResult = this.getSnapPointForReverseArc(clickX, clickY);
-                if (snapResult) {
-                    clickArcZone = snapResult.zone;
-                    effectiveX = snapResult.snapX;
-                    effectiveY = snapResult.snapY;
-                }
-            }
-            // Если не реверс, проверяем основную арку
-            if (!clickArcZone) {
-                snapResult = this.getSnapPointForForwardArc(clickX, clickY);
-                if (snapResult) {
-                    clickArcZone = snapResult.zone;
-                    effectiveX = snapResult.snapX;
-                    effectiveY = snapResult.snapY;
-                }
+
+        // Попытка примагничивания к реверс-арке (только если speed == MIN_SPEED)
+        if (!clickArcZone && this.car?.getData('speed') === MIN_SPEED) {
+            snapResult = this.getSnapPointForReverseArc(clickX, clickY);
+            if (snapResult) {
+                clickArcZone = snapResult.zone;
+                effectiveX = snapResult.snapX;
+                effectiveY = snapResult.snapY;
             }
         }
 
-        let moveData = null;
-        if (clickArcZone) {
-            if (clickArcZone === 'reverse') {
-                console.log("Controller: Clicked REVERSE arc");
-                const reverseAngleRad = Phaser.Math.DegToRad(this.car.angle + 180);
-                const targetX = this.car.x + Math.cos(reverseAngleRad) * REVERSE_MOVE_DISTANCE;
-                const targetY = this.car.y + Math.sin(reverseAngleRad) * REVERSE_MOVE_DISTANCE;
-                moveData = this.initiateReverseMove(targetX, targetY); // Вызываем внутренний метод
+        // Если всё ещё нет зоны – попробуем снап к передней арке
+        if (!clickArcZone) {
+            snapResult = this.getSnapPointForForwardArc(clickX, clickY);
+            if (snapResult) {
+                clickArcZone = snapResult.zone;
+                effectiveX = snapResult.snapX;
+                effectiveY = snapResult.snapY;
             } else {
-                const targetData = this.calculateTargetFromArcPoint(effectiveX, effectiveY);
-                if (targetData) {
-                     moveData = this.initiateForwardMove( // Вызываем внутренний метод
-                        targetData.targetX,
-                        targetData.targetY,
-                        clickArcZone,
-                        targetData.relativeClickDistOverallArc,
-                        targetData.relativeClickDistInWorkingZone
-                    );
-                 }
+                // Если не попали ни в арку, ни в магнитные зоны – не двигаем машину
+                console.log("ArcController: Clicked empty space (no zone). No move initiated.");
+                return null;
+            }
+        }
+
+        // На этом этапе clickArcZone точно не null
+        let moveData = null;
+        if (clickArcZone === 'reverse') {
+            console.log("ArcController: Clicked REVERSE arc");
+            const reverseAngleRad = Phaser.Math.DegToRad(this.car.angle + 180);
+            const targetX = this.car.x + Math.cos(reverseAngleRad) * REVERSE_MOVE_DISTANCE;
+            const targetY = this.car.y + Math.sin(reverseAngleRad) * REVERSE_MOVE_DISTANCE;
+            moveData = this.initiateReverseMove(targetX, targetY);
+
+        } else {
+            // Обычный передний ход: brake / accelerate / red
+            const targetData = this.calculateTargetFromArcPoint(effectiveX, effectiveY);
+            if (targetData) {
+                moveData = this.initiateForwardMove(
+                    targetData.targetX,
+                    targetData.targetY,
+                    clickArcZone,
+                    targetData.relativeClickDistOverallArc,
+                    targetData.relativeClickDistInWorkingZone
+                );
             }
         }
 
         if (moveData) {
-             this.clearVisuals(); // Очищаем дугу, траекторию и т.д. при начале хода
-             return { moveData }; // Возвращаем данные для истории
+            this.clearVisuals();
+            return { moveData };
         }
-        return null; // Ход не начат
+        return null;
     }
+
+
 
 
     initiateForwardMove(targetX, targetY, clickArcZone, relativeClickDistOverallArc, relativeClickDistInWorkingZone) {
@@ -742,5 +873,3 @@ class ArcController {
 
 } // Конец класса ArcController
 
-// Важно: Если ваш проект использует модули (import/export),
-// добавьте в конце файла: export default ArcController;
