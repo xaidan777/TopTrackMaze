@@ -20,13 +20,20 @@ class MainMenuScene extends Phaser.Scene {
         const gameWidth = this.cameras.main.width;
         const gameHeight = this.cameras.main.height;
         const centerX = gameWidth / 2;
-        const centerY = gameHeight / 2; // Центр по Y для окна "Как играть"
+        const centerY = gameHeight / 2;
 
-        // Добавляем пэкшот (фон)
-        this.add.image(centerX, centerY, 'packshot');
+        // Добавляем пэкшот (фон) с центрированием
+        this.background = this.add.image(centerX, centerY, 'packshot');
+        this.background.setOrigin(0.5, 0.5);
+        
+        // Масштабируем фон так, чтобы безопасная зона 1024x1024 всегда была видна
+        const safeZoneSize = 1024;
+        const scaleX = gameWidth / safeZoneSize;
+        const scaleY = gameHeight / safeZoneSize;
+        const scale = Math.min(scaleX, scaleY); // Используем минимальный масштаб
+        this.background.setScale(scale);
 
         // --- Конфигурация кнопок меню ---
-        const buttonStartY = 410;
         const buttonWidth = 338;
         const buttonHeight = 100;
         const buttonSpacing = 20;
@@ -48,24 +55,26 @@ class MainMenuScene extends Phaser.Scene {
 
         // --- Создаем кнопки меню ---
         buttonsData.forEach((buttonInfo, index) => {
-            const currentButtonY = buttonStartY + index * (buttonHeight + buttonSpacing);
-            const container = this.add.container(centerX, currentButtonY);
+            // Вычисляем позицию кнопки относительно центра экрана
+            // STARTGAME в центре, остальные под ней
+            const buttonY = centerY + index * (buttonHeight + buttonSpacing);
+            const container = this.add.container(centerX, buttonY);
             container.setSize(buttonWidth, buttonHeight);
             container.setAlpha(0);
 
-            // 1. Создаем изображение для тени, используя ту же картинку кнопки
+            // 1. Создаем изображение для тени
             const shadowImage = this.add.image(
-                shadowOffsetX,  // Смещаем тень как и раньше
+                shadowOffsetX,
                 shadowOffsetY,
-                buttonInfo.key  // Используем ключ картинки кнопки
+                buttonInfo.key
             );
-            shadowImage.setOrigin(0.5, 0.5); // Ставим точку привязки в центр
-            shadowImage.setTintFill(shadowColor); // Закрашивает непрозрачные пиксели цветом 0x2f1c00
-            shadowImage.setAlpha(shadowAlpha);    // Устанавливает прозрачность 50%
+            shadowImage.setOrigin(0.5, 0.5);
+            shadowImage.setTintFill(shadowColor);
+            shadowImage.setAlpha(shadowAlpha);
             container.add(shadowImage);
 
             const button = this.add.image(0, 0, buttonInfo.key).setOrigin(0.5, 0.5);
-            container.add(button); // Добавляем основную кнопку поверх тени
+            container.add(button);
 
             container.setInteractive();
 
@@ -73,7 +82,7 @@ class MainMenuScene extends Phaser.Scene {
                 this.handleButtonClick(buttonInfo.action);
             });
 
-            container.on('pointerover', () => { button.setTint(0xf7cf79); }); // Эффект наведения на основную кнопку
+            container.on('pointerover', () => { button.setTint(0xf7cf79); });
             container.on('pointerout', () => { button.clearTint(); });
 
             this.menuButtons.push(container);
@@ -85,32 +94,89 @@ class MainMenuScene extends Phaser.Scene {
                 ease: 'Linear',
                 delay: startDelay + index * fadeInDuration
             });
-        }); // Конец forEach
+        });
 
-        // --- Создаем окно "Как играть" (изначально невидимое) ---
+        // --- Создаем окно "Как играть" ---
         this.howtoImage = this.add.image(centerX, centerY, 'howtoplay');
-        this.howtoImage.setOrigin(0.5, 0.5); // Центрируем
-        this.howtoImage.setVisible(false); // Скрыто по умолчанию
-        this.howtoImage.setDepth(10); // Устанавливаем глубину, чтобы было поверх кнопок меню
+        this.howtoImage.setOrigin(0.5, 0.5);
+        this.howtoImage.setVisible(false);
+        this.howtoImage.setDepth(10);
 
         // Кнопка "Закрыть" для окна "Как играть"
-        const closeButtonX = this.howtoImage.x + this.howtoImage.displayWidth / 2 - 30; // Небольшой отступ от края
-        const closeButtonY = this.howtoImage.y - this.howtoImage.displayHeight / 2 + 30; // Небольшой отступ от края
+        const closeButtonX = this.howtoImage.x + this.howtoImage.displayWidth / 2 - 30;
+        const closeButtonY = this.howtoImage.y - this.howtoImage.displayHeight / 2 + 30;
         this.closeButton = this.add.image(closeButtonX, closeButtonY, 'close');
         this.closeButton.setOrigin(0.5, 0.5);
-        this.closeButton.setVisible(false); // Скрыто по умолчанию
-        this.closeButton.setDepth(11); // Поверх картинки howto
-        this.closeButton.setInteractive(); // Делаем кликабельной
+        this.closeButton.setVisible(false);
+        this.closeButton.setDepth(11);
+        this.closeButton.setInteractive();
 
-        // Действие при клике на кнопку "Закрыть"
-        this.closeButton.on('pointerdown', () => {
-            this.hideHowToPlayWindow();
+        // Добавляем обработчик изменения размера после создания всех элементов
+        this.scale.on('resize', this.handleResize, this);
+    }
+
+    handleResize() {
+        if (!this.cameras || !this.cameras.main) {
+            return;
+        }
+
+        const width = this.scale.width;
+        const height = this.scale.height;
+        const aspectRatio = width / height;
+
+        // Ограничиваем соотношение сторон
+        let newWidth = width;
+        let newHeight = height;
+
+        if (aspectRatio > MAX_ASPECT_RATIO) {
+            newWidth = height * MAX_ASPECT_RATIO;
+        } else if (aspectRatio < MIN_ASPECT_RATIO) {
+            newHeight = width / MIN_ASPECT_RATIO;
+        }
+
+        // Обновляем размер камеры
+        this.cameras.main.setViewport(
+            (width - newWidth) / 2,
+            (height - newHeight) / 2,
+            newWidth,
+            newHeight
+        );
+
+        // Обновляем позиции элементов меню
+        const centerX = newWidth / 2;
+        const centerY = newHeight / 2;
+
+        // Обновляем позицию и масштаб фона
+        if (this.background) {
+            this.background.setPosition(centerX, centerY);
+            const safeZoneSize = 1024;
+            const scaleX = newWidth / safeZoneSize;
+            const scaleY = newHeight / safeZoneSize;
+            const scale = Math.min(scaleX, scaleY); // Используем минимальный масштаб
+            this.background.setScale(scale);
+        }
+
+        // Обновляем позиции кнопок
+        const buttonHeight = 100;
+        const buttonSpacing = 20;
+        this.menuButtons.forEach((button, index) => {
+            const buttonY = centerY + index * (buttonHeight + buttonSpacing);
+            button.setPosition(centerX, buttonY);
         });
-        // Добавляем эффекты наведения и для кнопки закрытия
-         this.closeButton.on('pointerover', () => { this.closeButton.setAlpha(0.7); });
-         this.closeButton.on('pointerout', () => { this.closeButton.setAlpha(1); });
 
-    } // Конец метода create
+        // Обновляем позицию окна "Как играть"
+        if (this.howtoImage) {
+            this.howtoImage.setPosition(centerX, centerY);
+        }
+
+        // Обновляем позицию кнопки закрытия
+        if (this.closeButton && this.howtoImage) {
+            this.closeButton.setPosition(
+                centerX + this.howtoImage.displayWidth / 2 - 30,
+                centerY - this.howtoImage.displayHeight / 2 + 30
+            );
+        }
+    }
 
     // --- Методы для обработки действий кнопок ---
 

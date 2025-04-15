@@ -2,18 +2,33 @@
 <html>
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>TopTrack: Maze</title> <script src="https://cdn.jsdelivr.net/npm/simplex-noise@2.4.0/simplex-noise.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
 
     <style>
         body {
             margin: 0;
+            padding: 0;
             background-color: #222; /* Темный фон */
             display: flex;
             justify-content: center; /* Центрирование по горизонтали */
             align-items: center; /* Центрирование по вертикали */
             height: 100vh; /* Высота на весь экран */
+            width: 100vw;
             overflow: hidden; /* Убрать возможные полосы прокрутки */
+        }
+        #phaser-game {
+            width: 100%;
+            height: 100%;
+            max-width: 100vw;
+            max-height: 100vh;
+            aspect-ratio: 4/3;
+        }
+        @media (max-aspect-ratio: 3/4) {
+            #phaser-game {
+                aspect-ratio: 3/4;
+            }
         }
         canvas {
             /* Можно добавить рамку для отладки */
@@ -24,5 +39,18 @@
 <body>
     <div id="phaser-game"></div>
 
-    <script src="Constants.js?v=__GIT_HASH__"></script>      <script src="ArcController.js?v=__GIT_HASH__"></script>  <script src="MainMenuScene.js?v=__GIT_HASH__"></script> <script src="GameScene.js?v=__GIT_HASH__"></script>      <script src="main.js?v=__GIT_HASH__"></script>          </body>
+    <script src="Constants.js?v=__GIT_HASH__"></script>
+    <script src="ArcController.js?v=__GIT_HASH__"></script>
+    <script src="MainMenuScene.js?v=__GIT_HASH__"></script>
+    <script src="GameScene.js?v=__GIT_HASH__"></script>
+    <script src="ConsoleCommands.js?v=__GIT_HASH__"></script>
+    <script src="main.js?v=__GIT_HASH__"></script>
+    <script>
+        window.addEventListener('load', () => {
+            if (window.game) {
+                window.consoleCommands = new ConsoleCommands(window.game);
+            }
+        });
+    </script>
+</body>
 </html>

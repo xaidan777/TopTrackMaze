@@ -3,6 +3,10 @@ const GAME_WIDTH = 1024;
 const GAME_HEIGHT = 1024;
 const GRID_CELL_SIZE = 32;
 
+// Соотношения сторон
+const MIN_ASPECT_RATIO = 3/4;  // Минимальное соотношение (вертикальный режим)
+const MAX_ASPECT_RATIO = 4/3;  // Максимальное соотношение (горизонтальный режим)
+
 // Добавляем коэффициент, чтобы "мир" (уровень), объекты и машина
 // были в 2 раза больше, чем раньше:
 const WORLD_SCALE = 2;
@@ -14,7 +18,7 @@ const SHADOW_ALPHA = 0.1;      // Прозрачность тени (50%)
 const SHADOW_OFFSET_Y = 5;     // Вертикальное смещение тени (в пикселях)
 const SHADOW_DEPTH_OFFSET = -1; // Насколько "ниже" основного спрайта рисовать тень
 
-const VIRTUAL_JOYSTICK_BLOCK_RADIUS = 10;
+const VIRTUAL_JOYSTICK_BLOCK_RADIUS = 20;
 
 // --- Цвета и прозрачность ---
 const COLOR_BRAKE       = 0xaaaaaa;
@@ -45,6 +49,7 @@ const ARC_THICKNESS_GUI               = 50;
 const GREEN_ZONE_RATIO                = 0.6;
 const BASE_ANGLE_DEG                  = 120;
 const SNAP_THRESHOLD = 5; // порог магнитного эффекта в пикселях
+const ENHANCED_SNAP_THRESHOLD = 15; // усиленный порог магнитного эффекта (в 3 раза больше)
 const ANGLE_SNAP_THRESHOLD = Phaser.Math.DegToRad(15);
 const GAP_SNAP_THRESHOLD = 15; 
 
@@ -118,4 +123,9 @@ const WIN_FLASH_COLOR        = 0x00ff00;
 const SHAKE_DURATION         = 300;
 const SHAKE_INTENSITY        = 0.01;
 const RESTART_DELAY          = 1000; 
+
+const CAMERA_BASE_ZOOM = 2;
+const CAMERA_MAX_ZOOM = 1.5;
+const CAMERA_ZOOM_SPEED_THRESHOLD = 1; // Скорость, при которой начинается отдаление
+const CAMERA_ZOOM_SPEED_MAX = 5; // Скорость, при которой достигается максимальное отдаление
 

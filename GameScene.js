@@ -2,6 +2,9 @@ class GameScene extends Phaser.Scene {
     constructor() {
         super({ key: 'GameScene' });
         this.ignoreNextPointerUp = false;
+        this.isUIInteraction = false;
+        this.levelStartBlockTime = 0;
+        this.levelStartBlockDuration = 500;
         this.car = null;
         this.carShadow = null;
         this.controlArcGraphics = null;
@@ -9,6 +12,7 @@ class GameScene extends Phaser.Scene {
         this.ghostCar = null;
         this.snapCursor = null;
         this.arcController = null;
+        this.debugMode = false;
 
         this.infoText = null;
         this.levelText = null;
@@ -79,10 +83,15 @@ class GameScene extends Phaser.Scene {
         if (this.replayCarShadow) this.replayCarShadow.destroy();
         this.replayCarShadow = null;
 
-        this.ignoreNextPointerUp = true;
-        this.time.delayedCall(1000, () => {
+        if (!this.registry.get('isRestarting')) {
+            this.ignoreNextPointerUp = true;
+            this.time.delayedCall(1000, () => {
+                this.ignoreNextPointerUp = false;
+            }, [], this);
+        } else {
+            this.registry.set('isRestarting', false);
             this.ignoreNextPointerUp = false;
-        }, [], this);
+        }
 
         this.movesHistory = [];
         this.currentLevel = this.registry.get('currentLevel') || 1;
@@ -177,18 +186,25 @@ class GameScene extends Phaser.Scene {
         console.log("ArcController initialized.");
 
         // --- Элементы UI ---
-        this.infoText = this.add.text(10, 10, '', {
-            font: 'bold 12px Courier New',
-            fill: '#ffff00',
-            align: 'center'
-        }).setDepth(20);
-        this.levelText = this.add.text(200, 5, `Level ${this.currentLevel} / ${TOTAL_LEVELS}`, {
+        // Уровень в левом верхнем углу
+        this.levelText = this.add.text(10, 5, `Level ${this.currentLevel} / ${TOTAL_LEVELS}`, {
             font: 'bold 20px Courier New',
             fill: '#ffff00',
             stroke: '#634125',
             strokeThickness: 6,
-            align: 'center'
+            align: 'left'
         }).setOrigin(0, 0).setDepth(21);
+
+        // Скорость под уровнем
+        this.speedText = this.add.text(10, 35, '', {
+            font: 'bold 20px Courier New',
+            fill: '#ffff00',
+            stroke: '#634125',
+            strokeThickness: 6,
+            align: 'left'
+        }).setOrigin(0, 0).setDepth(21);
+
+        // Топливо по центру вверху
         this.fuelText = this.add.text(GAME_WIDTH / 2, 5, '', {
             font: 'bold 20px Courier New',
             fill: '#ffff00',
@@ -198,13 +214,11 @@ class GameScene extends Phaser.Scene {
         }).setOrigin(0.5, 0).setDepth(21);
         this.updateFuelDisplay();
 
-        this.playAgainButton = this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 30, START_BUTTON_KEY)
+        this.playAgainButton = this.add.image(0, 0, START_BUTTON_KEY)
             .setVisible(false).setInteractive({ useHandCursor: true })
             .on('pointerdown', this.startNewGame, this);
 
-        const restartButtonX = GAME_WIDTH - 5;
-        const restartButtonY = 5;
-        this.restartButtonObject = this.add.image(restartButtonX, restartButtonY, RESTART_BUTTON_KEY)
+        this.restartButtonObject = this.add.image(GAME_WIDTH - 5, 5, RESTART_BUTTON_KEY)
             .setOrigin(1, 0).setDepth(22).setInteractive({ useHandCursor: true });
         this.restartButtonObject.on('pointerdown', () => {
             console.log("Restart button clicked!");
@@ -213,46 +227,71 @@ class GameScene extends Phaser.Scene {
             }
         });
 
-        this.winText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 50, 'LEVEL COMPLETE!', {
-            font: 'bold 48px Courier New',
+        this.winText = this.add.text(0, 0, 'LEVEL COMPLETE!', {
+            font: 'bold 36px Courier New',
             fill: '#ffff00',
             stroke: '#634125',
             strokeThickness: 6,
             align: 'center'
-        })
-            .setOrigin(0.5).setDepth(25).setVisible(false);
+        }).setOrigin(0.5).setDepth(25).setVisible(false);
 
         this.nextLevelButton = null;
         if (this.currentLevel < TOTAL_LEVELS) {
-            this.nextLevelButton = this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 30, NEXT_LEVEL_BUTTON_KEY)
+            this.nextLevelButton = this.add.image(0, 0, NEXT_LEVEL_BUTTON_KEY)
                 .setVisible(false).setInteractive({ useHandCursor: true })
                 .on('pointerdown', this.startNextLevel, this);
         }
 
-        this.restartLevelText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, '', {
-            font: 'bold 48px Courier New',
+        this.restartLevelText = this.add.text(0, 0, '', {
+            font: 'bold 36px Courier New',
             fill: '#ffff00',
             stroke: '#634125',
             strokeThickness: 6,
             align: 'center'
-        })
-            .setOrigin(0.5).setDepth(26).setVisible(false);
+        }).setOrigin(0.5).setDepth(26).setVisible(false);
 
-        // --- Обработчики ввода ---
-           
+        // Устанавливаем время начала блокировки
+        this.levelStartBlockTime = this.time.now;
+
         // 1) Pointer Down
-        
-         // 1) Pointer Down
         this.input.on('pointerdown', (pointer) => {
             if (pointer.button !== 0) return;
-            if (this.isMoving || this.levelComplete || this.gameOver || !this.car || !this.arcController) {
+            
+            // Проверяем, не нажали ли мы на UI элементы
+            const pointerX = pointer.worldX;
+            const pointerY = pointer.worldY;
+            
+            // Проверяем попадание в кнопки UI
+            const hitUI = [
+                this.nextLevelButton,
+                this.restartButtonObject,
+                this.playAgainButton
+            ].some(button => {
+                if (!button || !button.visible) return false;
+                const bounds = button.getBounds();
+                // Преобразуем мировые координаты в экранные для проверки UI элементов
+                const screenPoint = this.cameras.main.getWorldPoint(pointerX, pointerY);
+                return bounds.contains(screenPoint.x, screenPoint.y);
+            });
+            
+            if (hitUI) {
+                console.log("UI button clicked, ignoring pointerdown");
+                this.isUIInteraction = true;
+                return;
+            }
+            
+            this.isUIInteraction = false;
+            
+            // Проверяем, не истекло ли время блокировки после старта уровня
+            if (this.time.now - this.levelStartBlockTime < this.levelStartBlockDuration) {
+                console.log("Level start block active, ignoring pointerdown");
+                return;
+            }
+            
+            if (this.isMoving || this.levelComplete || this.gameOver || !this.car || !this.arcController || this.ignoreNextPointerUp) {
                 return;
             }
 
-            const pointerX = pointer.worldX;
-            const pointerY = pointer.worldY;
-
-            // Сначала проверяем, находится ли клик *непосредственно* на активной зоне арки
             const directArcZone = this.arcController.getArcZoneForPoint(pointerX, pointerY);
 
             // Затем проверяем, находится ли клик *рядом* с аркой (в пределах VIRTUAL_JOYSTICK_BLOCK_RADIUS)
@@ -303,12 +342,14 @@ class GameScene extends Phaser.Scene {
             }
         });
 
-
-        
         // 2) Pointer Move
-        
         this.input.on('pointermove', (pointer) => {
-            if (this.levelComplete || this.gameOver || !this.arcController) return;
+            if (this.levelComplete || this.gameOver || !this.arcController || this.isUIInteraction) return;
+            
+            // Проверяем блокировку после старта уровня
+            if (this.time.now - this.levelStartBlockTime < this.levelStartBlockDuration) {
+                return;
+            }
 
             // Если машина едет - очищаем дугу
             if (this.isMoving) {
@@ -346,11 +387,15 @@ class GameScene extends Phaser.Scene {
             }
         });
 
-        
         // 3) Pointer Up
-                this.input.on('pointerup', (pointer) => {
+        this.input.on('pointerup', (pointer) => {
             if (pointer.button !== 0) return;
-            if (this.isMoving || this.levelComplete || this.gameOver || !this.car || !this.arcController) {
+            if (this.isMoving || this.levelComplete || this.gameOver || !this.car || !this.arcController || this.isUIInteraction) {
+                return;
+            }
+            
+            // Проверяем блокировку после старта уровня
+            if (this.time.now - this.levelStartBlockTime < this.levelStartBlockDuration) {
                 return;
             }
 
@@ -440,7 +485,7 @@ class GameScene extends Phaser.Scene {
         ]);
 
         const mainCameraIgnoreList = [
-            this.infoText, this.levelText, this.fuelText,
+            this.levelText, this.fuelText,
             this.playAgainButton, this.restartButtonObject, this.winText,
             this.nextLevelButton, this.restartLevelText
         ].filter(item => item);
@@ -463,7 +508,89 @@ class GameScene extends Phaser.Scene {
         // --- Первая отрисовка состояния контроллера ---
         this.calculateAndDrawState();
 
+        // Добавляем обработчик изменения размера
+        this.scale.on('resize', this.handleResize, this);
+        this.handleResize();
+
         console.log("Game Scene create() finished.");
+    }
+
+    handleResize() {
+        if (!this.cameras || !this.cameras.main) {
+            return;
+        }
+
+        const width = this.scale.width;
+        const height = this.scale.height;
+        const aspectRatio = width / height;
+
+        // Ограничиваем соотношение сторон
+        let newWidth = width;
+        let newHeight = height;
+
+        if (aspectRatio > MAX_ASPECT_RATIO) {
+            newWidth = height * MAX_ASPECT_RATIO;
+        } else if (aspectRatio < MIN_ASPECT_RATIO) {
+            newHeight = width / MIN_ASPECT_RATIO;
+        }
+
+        // Обновляем размер камеры
+        this.cameras.main.setViewport(
+            (width - newWidth) / 2,
+            (height - newHeight) / 2,
+            newWidth,
+            newHeight
+        );
+
+        // Обновляем размер UI камеры
+        if (this.uiCamera) {
+            this.uiCamera.setViewport(
+                (width - newWidth) / 2,
+                (height - newHeight) / 2,
+                newWidth,
+                newHeight
+            );
+        }
+
+        // Обновляем позиции UI элементов
+        const centerX = newWidth / 2;
+        const centerY = newHeight / 2;
+
+        // Обновляем позиции текстовых сообщений
+        if (this.winText) {
+            this.winText.setPosition(centerX, centerY - 50);
+        }
+
+        if (this.restartLevelText) {
+            this.restartLevelText.setPosition(centerX, centerY - 50);
+        }
+
+        // Обновляем позиции кнопок
+        if (this.playAgainButton) {
+            this.playAgainButton.setPosition(centerX, centerY + 30);
+        }
+
+        if (this.nextLevelButton) {
+            this.nextLevelButton.setPosition(centerX, centerY + 30);
+        }
+
+        // Обновляем позицию кнопки перезапуска
+        if (this.restartButtonObject) {
+            this.restartButtonObject.setPosition(newWidth - 5, 5);
+        }
+
+        // Обновляем позиции информационных текстов
+        if (this.levelText) {
+            this.levelText.setPosition(10, 5);
+        }
+
+        if (this.speedText) {
+            this.speedText.setPosition(10, 35);
+        }
+
+        if (this.fuelText) {
+            this.fuelText.setPosition(centerX, 5);
+        }
     }
 
     // --- Генерация уровня ---
@@ -559,6 +686,15 @@ class GameScene extends Phaser.Scene {
                 shadow.setDepth(obstacle.depth + SHADOW_DEPTH_OFFSET);
                 if (this.obstacleShadowsGroup) this.obstacleShadowsGroup.add(shadow);
 
+                const collisionSize = GRID_CELL_SIZE * 0.8;
+                const originalSize = GRID_CELL_SIZE;
+                const offsetX = (originalSize - collisionSize) / 2;
+                const offsetY = (originalSize - collisionSize) / 2;
+
+                obstacle.body.setSize(collisionSize, collisionSize);
+                obstacle.body.setOffset(offsetX, offsetY);
+                obstacle.refreshBody();
+
                 occupiedCells[0][gx] = true;
                 borderObstaclesCount++;
             }
@@ -574,6 +710,15 @@ class GameScene extends Phaser.Scene {
                 shadow.setAlpha(SHADOW_ALPHA);
                 shadow.setDepth(obstacle.depth + SHADOW_DEPTH_OFFSET);
                 if (this.obstacleShadowsGroup) this.obstacleShadowsGroup.add(shadow);
+
+                const collisionSize = GRID_CELL_SIZE * 0.8;
+                const originalSize = GRID_CELL_SIZE;
+                const offsetX = (originalSize - collisionSize) / 2;
+                const offsetY = (originalSize - collisionSize) / 2;
+
+                obstacle.body.setSize(collisionSize, collisionSize);
+                obstacle.body.setOffset(offsetX, offsetY);
+                obstacle.refreshBody();
 
                 occupiedCells[gridHeight - 1][gx] = true;
                 borderObstaclesCount++;
@@ -597,6 +742,15 @@ class GameScene extends Phaser.Scene {
                 shadow.setDepth(obstacle.depth + SHADOW_DEPTH_OFFSET);
                 if (this.obstacleShadowsGroup) this.obstacleShadowsGroup.add(shadow);
 
+                const collisionSize = GRID_CELL_SIZE * 0.8;
+                const originalSize = GRID_CELL_SIZE;
+                const offsetX = (originalSize - collisionSize) / 2;
+                const offsetY = (originalSize - collisionSize) / 2;
+
+                obstacle.body.setSize(collisionSize, collisionSize);
+                obstacle.body.setOffset(offsetX, offsetY);
+                obstacle.refreshBody();
+
                 occupiedCells[gy][0] = true;
                 borderObstaclesCount++;
             }
@@ -612,6 +766,15 @@ class GameScene extends Phaser.Scene {
                 shadow.setAlpha(SHADOW_ALPHA);
                 shadow.setDepth(obstacle.depth + SHADOW_DEPTH_OFFSET);
                 if (this.obstacleShadowsGroup) this.obstacleShadowsGroup.add(shadow);
+
+                const collisionSize = GRID_CELL_SIZE * 0.8;
+                const originalSize = GRID_CELL_SIZE;
+                const offsetX = (originalSize - collisionSize) / 2;
+                const offsetY = (originalSize - collisionSize) / 2;
+
+                obstacle.body.setSize(collisionSize, collisionSize);
+                obstacle.body.setOffset(offsetX, offsetY);
+                obstacle.refreshBody();
 
                 occupiedCells[gy][gridWidth - 1] = true;
                 borderObstaclesCount++;
@@ -744,35 +907,9 @@ class GameScene extends Phaser.Scene {
     }
 
     updateInfoText() {
-        if (!this.infoText || !this.car || !this.infoText.active) return;
+        if (!this.speedText || !this.car || !this.speedText.active) return;
         const speed = this.car.getData('speed') ?? 0;
-        const redCooldown = this.car.getData('redCooldown') ?? 0;
-        const accelDisabled = this.car.getData('accelDisabled') ?? false;
-        const currentFuel = this.fuel;
-        let statusText = '';
-        if (this.gameOver) {
-            statusText = 'GAME OVER';
-        } else if (this.levelComplete) {
-            statusText = 'Level Complete!';
-        } else if (this.isMoving) {
-            statusText = 'Moving...';
-        } else {
-            statusText = 'Ready for input';
-        }
-        const cooldownText = redCooldown > 0 ? ` | Red CD: ${redCooldown}` : '';
-        const accelText = accelDisabled ? ' | ACCEL OFF' : '';
-        const textLines = [
-            `Speed: ${speed.toFixed(1)}${cooldownText}${accelText}`,
-            `Fuel: ${currentFuel}`,
-            statusText
-        ];
-        try {
-            if (this.infoText.active) {
-                this.infoText.setText(textLines);
-            }
-        } catch (e) {
-            console.warn("Error updating info text:", e);
-        }
+        this.speedText.setText(`Speed: ${speed.toFixed(1)}`);
     }
 
     // --- Обработка событий игры ---
@@ -869,13 +1006,6 @@ class GameScene extends Phaser.Scene {
         });
     }
 
-    handleCollision(car, obstacle) {
-        if (this.isMoving && !this.levelComplete && !this.gameOver && this.car?.body && this.obstaclesGroup && this.obstaclesGroup.contains(obstacle)) {
-            console.log("Collision detected!");
-            this.triggerGameOver(`CRASH! LEVEL ${this.currentLevel}`);
-        }
-    }
-
     handleOutOfFuel() {
         if (this.gameOver || this.levelComplete) return;
         console.log("Fuel depleted!");
@@ -890,10 +1020,35 @@ class GameScene extends Phaser.Scene {
         const nextLevel = this.currentLevel + 1;
         const nextObstacleThreshold = Math.max(MIN_OBSTACLE_THRESHOLD, this.currentObstacleThreshold - OBSTACLE_THRESHOLD_DECREMENT);
 
+        // Очищаем обработчики событий перед перезапуском
+        this.input.off('pointerdown');
+        this.input.off('pointermove');
+        this.input.off('pointerup');
+        this.input.keyboard.enabled = false;
+        
+        // Дополнительная очистка
+        if (this.arcController) {
+            this.arcController.clearVisuals();
+            this.arcController = null;
+        }
+        
+        // Отключаем все интерактивные элементы
+        if (this.nextLevelButton) this.nextLevelButton.removeInteractive();
+        if (this.restartButtonObject) this.restartButtonObject.removeInteractive();
+        if (this.playAgainButton) this.playAgainButton.removeInteractive();
+
         this.registry.set('currentLevel', nextLevel);
         this.registry.set('obstacleThreshold', nextObstacleThreshold);
+        this.registry.set('isRestarting', true);
 
-        if (this.scene.isActive(this.scene.key)) this.scene.restart();
+        // Сбрасываем флаг UI взаимодействия
+        this.isUIInteraction = false;
+        // Устанавливаем время начала блокировки
+        this.levelStartBlockTime = this.time.now;
+
+        if (this.scene.isActive(this.scene.key)) {
+            this.scene.restart();
+        }
     }
 
     // --- Метод Update ---
@@ -1005,7 +1160,28 @@ class GameScene extends Phaser.Scene {
         const nextRedCooldown = this.car.getData('nextRedCooldown');
         const nextAccelDisabled = this.car.getData('nextAccelDisabled');
 
-        if (nextSpeed !== undefined) this.car.setData('speed', nextSpeed);
+        if (nextSpeed !== undefined) {
+            this.car.setData('speed', nextSpeed);
+            // Обновляем зум камеры при изменении скорости
+            const currentSpeed = nextSpeed;
+            if (currentSpeed >= CAMERA_ZOOM_SPEED_THRESHOLD) {
+                const speedFactor = (currentSpeed - CAMERA_ZOOM_SPEED_THRESHOLD) / (CAMERA_ZOOM_SPEED_MAX - CAMERA_ZOOM_SPEED_THRESHOLD);
+                const targetZoom = Phaser.Math.Linear(CAMERA_BASE_ZOOM, CAMERA_MAX_ZOOM, speedFactor);
+                this.tweens.add({
+                    targets: this.cameras.main,
+                    zoom: targetZoom,
+                    duration: TURN_DURATION,
+                    ease: 'Linear'
+                });
+            } else {
+                this.tweens.add({
+                    targets: this.cameras.main,
+                    zoom: CAMERA_BASE_ZOOM,
+                    duration: TURN_DURATION,
+                    ease: 'Linear'
+                });
+            }
+        }
 
         let currentRedCooldown = this.car.getData('redCooldown') ?? 0;
         if (nextRedCooldown !== undefined) {
@@ -1163,6 +1339,8 @@ class GameScene extends Phaser.Scene {
             console.warn("Keyboard input not available");
             return;
         }
+
+        // Отключаем все отладочные клавиши по умолчанию
         this.input.keyboard.off('keydown-W');
         this.input.keyboard.off('keydown-S');
         this.input.keyboard.off('keydown-A');
@@ -1171,7 +1349,7 @@ class GameScene extends Phaser.Scene {
         this.input.keyboard.off('keydown-R');
         this.input.keyboard.off('keydown-F');
 
-        const checkDebugInput = () => this.car?.active && !this.isMoving && !this.levelComplete && !this.gameOver;
+        const checkDebugInput = () => this.car?.active && !this.isMoving && !this.levelComplete && !this.gameOver && this.debugMode;
 
         this.input.keyboard.on('keydown-W', () => {
             if (!checkDebugInput()) return;
@@ -1204,6 +1382,7 @@ class GameScene extends Phaser.Scene {
             }
         });
         this.input.keyboard.on('keydown-R', () => {
+            if (!checkDebugInput()) return;
             console.log("Debug: Resetting obstacle threshold in registry to initial value for next level restart.");
             this.registry.set('obstacleThreshold', INITIAL_OBSTACLE_THRESHOLD);
         });
@@ -1229,5 +1408,37 @@ class GameScene extends Phaser.Scene {
             this.arcController.drawState();
         }
         this.updateInfoText();
+    }
+
+    // Добавляем метод для активации отладочного режима
+    activateDebugMode() {
+        this.debugMode = true;
+        // Включаем отображение физических тел безопасным способом
+        if (this.physics && this.physics.world) {
+            this.physics.world.createDebugGraphic();
+            this.physics.world.drawDebug = true;
+        }
+        this.setupDebugControls();
+        console.log("Debug mode activated! Available commands:");
+        console.log("W - Increase speed");
+        console.log("S - Decrease speed");
+        console.log("A - Rotate left");
+        console.log("D - Rotate right");
+        console.log("P - Skip level");
+        console.log("R - Reset obstacle threshold");
+        console.log("F - Add fuel");
+    }
+
+    handleCollision(car, obstacle) {
+        if (!car || !obstacle || this.levelComplete || this.gameOver) return;
+        console.log("Collision with obstacle!");
+        
+        // Очищаем обработчики событий
+        if (this.arcController) this.arcController.clearVisuals();
+        this.input.off('pointerdown');
+        this.input.off('pointermove');
+        this.input.keyboard.enabled = false;
+        
+        this.triggerGameOver(`CRASHED! LEVEL ${this.currentLevel}`);
     }
 } 

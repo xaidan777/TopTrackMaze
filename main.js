@@ -6,14 +6,29 @@ const config = {
     width: GAME_WIDTH,
     height: GAME_HEIGHT,
     parent: 'phaser-game',
-    scene: [MainMenuScene, GameScene], // <--- Проблемное место
+    scene: [MainMenuScene, GameScene],
     antialias: true,
     physics: {
         default: 'arcade',
-        arcade: { debug: false }
+        arcade: { 
+            debug: false,
+            debugShowBody: true,
+            debugShowStaticBody: true,
+            debugShowVelocity: true,
+            debugVelocityColor: 0xffff00,
+            debugBodyColor: 0x0000ff,
+            debugStaticBodyColor: 0xff00ff
+        }
     },
     resolution: window.devicePixelRatio || 1,
-    render: { pixelArt: false }
+    render: { pixelArt: false },
+    scale: {
+        mode: Phaser.Scale.RESIZE,
+        parent: 'phaser-game',
+        width: '100%',
+        height: '100%',
+        autoCenter: Phaser.Scale.CENTER_BOTH
+    }
 };
 
 window.onload = () => {
@@ -24,7 +39,7 @@ window.onload = () => {
             // ... код обработки ошибки SimplexNoise ...
         }
     } else {
-        const game = new Phaser.Game(config); // <--- Запуск игры
+        window.game = new Phaser.Game(config);
         console.log("Phaser Game instance created.");
     }
 };
