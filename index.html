@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>TopTrack: Maze</title> <script src="https://cdn.jsdelivr.net/npm/simplex-noise@2.4.0/simplex-noise.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
 
@@ -17,6 +17,10 @@
             height: 100vh; /* Высота на весь экран */
             width: 100vw;
             overflow: hidden; /* Убрать возможные полосы прокрутки */
+            position: fixed;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
         #phaser-game {
             width: 100%;
@@ -24,6 +28,7 @@
             max-width: 100vw;
             max-height: 100vh;
             aspect-ratio: 4/3;
+            touch-action: none;
         }
         @media (max-aspect-ratio: 3/4) {
             #phaser-game {
@@ -33,6 +38,8 @@
         canvas {
             /* Можно добавить рамку для отладки */
             /* border: 1px solid white; */
+            display: block;
+            touch-action: none;
         }
     </style>
 </head>

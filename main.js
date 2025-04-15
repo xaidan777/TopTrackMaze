@@ -20,14 +20,23 @@ const config = {
             debugStaticBodyColor: 0xff00ff
         }
     },
-    resolution: window.devicePixelRatio || 1,
-    render: { pixelArt: false },
+    render: { 
+        pixelArt: false,
+        antialias: true
+    },
     scale: {
         mode: Phaser.Scale.RESIZE,
         parent: 'phaser-game',
         width: '100%',
         height: '100%',
-        autoCenter: Phaser.Scale.CENTER_BOTH
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        autoRound: true,
+        expandParent: true
+    },
+    input: {
+        touch: {
+            capture: true
+        }
     }
 };
 
