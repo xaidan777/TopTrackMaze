@@ -37,8 +37,23 @@ const config = {
         touch: {
             capture: true
         }
+    },
+    callbacks: {
+        preBoot: function() {
+            updateLoadingProgress(20);
+        },
+        postBoot: function() {
+            updateLoadingProgress(40);
+        }
     }
 };
+
+function updateLoadingProgress(percent) {
+    const progressBar = document.querySelector('.loading-progress');
+    if (progressBar) {
+        progressBar.style.width = percent + '%';
+    }
+}
 
 window.onload = () => {
     if (typeof SimplexNoise === 'undefined') {
@@ -48,7 +63,9 @@ window.onload = () => {
             // ... код обработки ошибки SimplexNoise ...
         }
     } else {
+        updateLoadingProgress(60);
         window.game = new Phaser.Game(config);
         console.log("Phaser Game instance created.");
+        updateLoadingProgress(80);
     }
 };
