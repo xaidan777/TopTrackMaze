@@ -123,6 +123,9 @@ class MainMenuScene extends Phaser.Scene {
         this.closeButton.setDepth(11);
         this.closeButton.setInteractive();
 
+        // Добавляем обработчик нажатия на кнопку "Закрыть"
+        this.closeButton.on('pointerdown', this.hideHowToPlayWindow, this);
+
         // Добавляем обработчик изменения размера после создания всех элементов
         this.scale.on('resize', this.handleResize, this);
     }
@@ -182,8 +185,8 @@ class MainMenuScene extends Phaser.Scene {
         });
 
         // Обновляем позицию окна "Как играть"
-        if (this.howtoImage) {
-            this.howtoImage.setPosition(centerX, centerY);
+        if (this.howtoImage && this.howtoImage.visible) {
+            this.scaleAndPositionHowToPlay(newWidth, newHeight);
         }
 
         // Обновляем позицию кнопки закрытия
@@ -193,6 +196,37 @@ class MainMenuScene extends Phaser.Scene {
                 centerY - this.howtoImage.displayHeight / 2 + 30
             );
         }
+    }
+
+    // --- Новый метод для масштабирования и позиционирования окна "Как играть" ---
+    scaleAndPositionHowToPlay(gameWidth, gameHeight) {
+        if (!this.howtoImage || !this.closeButton) return;
+
+        const padding = 50; // Отступы от краев экрана
+        const availableWidth = gameWidth - padding * 2;
+        const availableHeight = gameHeight - padding * 2;
+        const centerX = gameWidth / 2;
+        const centerY = gameHeight / 2;
+
+        const imageWidth = this.howtoImage.texture.getSourceImage().width;
+        const imageHeight = this.howtoImage.texture.getSourceImage().height;
+
+        const scaleX = availableWidth / imageWidth;
+        const scaleY = availableHeight / imageHeight;
+        const scale = Math.min(scaleX, scaleY, 1); // Выбираем наименьший масштаб, но не больше 1
+
+        this.howtoImage.setScale(scale);
+        this.howtoImage.setPosition(centerX, centerY);
+
+        // Позиционируем кнопку "Закрыть" относительно правого верхнего угла масштабированного изображения
+        const closeButtonOffsetX = (this.howtoImage.displayWidth / 2) - (this.closeButton.width * this.closeButton.scaleX / 2) - 10; // Небольшой отступ от края
+        const closeButtonOffsetY = -(this.howtoImage.displayHeight / 2) + (this.closeButton.height * this.closeButton.scaleY / 2) + 10;
+
+        this.closeButton.setPosition(
+            this.howtoImage.x + closeButtonOffsetX,
+            this.howtoImage.y + closeButtonOffsetY
+        );
+        this.closeButton.setScale(1); // Кнопку закрытия не масштабируем дополнительно
     }
 
     // --- Методы для обработки действий кнопок ---
@@ -226,13 +260,22 @@ class MainMenuScene extends Phaser.Scene {
 
     showHowToPlayWindow() {
         if (this.howtoImage && this.closeButton) {
+            // Сначала масштабируем и позиционируем
+            const gameWidth = this.cameras.main.width;
+            const gameHeight = this.cameras.main.height;
+            this.scaleAndPositionHowToPlay(gameWidth, gameHeight);
+
             // Показываем окно и кнопку закрытия
             this.howtoImage.setVisible(true);
             this.closeButton.setVisible(true).setInteractive(); // Делаем кнопку снова интерактивной
 
             // Делаем кнопки меню неактивными и полупрозрачными
             this.menuButtons.forEach(buttonContainer => {
-                buttonContainer.disableInteractive(); // Отключаем кликабельность
+                // Находим hitArea внутри контейнера
+                const hitArea = buttonContainer.list.find(child => child instanceof Phaser.GameObjects.Rectangle && child.input);
+                if (hitArea) {
+                    hitArea.disableInteractive(); // Отключаем интерактивность у hitArea
+                }
                 buttonContainer.setAlpha(0.5); // Делаем полупрозрачными для визуального отличия
             });
         }
@@ -246,7 +289,11 @@ class MainMenuScene extends Phaser.Scene {
 
             // Возвращаем кнопкам меню активность и нормальную прозрачность
             this.menuButtons.forEach(buttonContainer => {
-                buttonContainer.setInteractive(); // Включаем кликабельность
+                // Находим hitArea внутри контейнера
+                const hitArea = buttonContainer.list.find(child => child instanceof Phaser.GameObjects.Rectangle && child.input);
+                if (hitArea) {
+                    hitArea.setInteractive(); // Включаем интерактивность у hitArea
+                }
                 buttonContainer.setAlpha(1); // Возвращаем нормальную прозрачность
             });
         }

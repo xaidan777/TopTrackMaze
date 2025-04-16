@@ -116,11 +116,11 @@ class GameScene extends Phaser.Scene {
         this.noise = new SimplexNoise();
 
         // --- Настройка мира и камеры ---
-        this.physics.world.setBounds(0, 0, REAL_GAME_WIDTH, REAL_GAME_HEIGHT);
-        this.cameras.main.setBounds(0, 0, REAL_GAME_WIDTH, REAL_GAME_HEIGHT);
+        this.physics.world.setBounds(0, 0, GAME_WIDTH, GAME_HEIGHT);
+        this.cameras.main.setBounds(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
         // --- Фон ---
-        this.backgroundTile = this.add.tileSprite(0, 0, REAL_GAME_WIDTH, REAL_GAME_HEIGHT, SAND_TEXTURE_KEY)
+        this.backgroundTile = this.add.tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, SAND_TEXTURE_KEY)
             .setOrigin(0, 0)
             .setDepth(-20);
 
@@ -134,7 +134,7 @@ class GameScene extends Phaser.Scene {
         this.createLevel();
 
         // --- Создание машины ---
-        this.car = this.physics.add.sprite(REAL_GAME_WIDTH / 2, REAL_GAME_HEIGHT / 2, CAR_PLAYER_KEY);
+        this.car = this.physics.add.sprite(GAME_WIDTH / 2, GAME_HEIGHT / 2, CAR_PLAYER_KEY);
         this.car.setScale(0.3).setOrigin(0.5, 0.5).setDataEnabled();
         this.car.setData({
             speed: MIN_SPEED,
@@ -615,15 +615,15 @@ class GameScene extends Phaser.Scene {
         const threshold = this.currentObstacleThreshold;
         const startClearRadius = GRID_CELL_SIZE * START_AREA_CLEAR_RADIUS_FACTOR;
 
-        const gridWidth = Math.floor(REAL_GAME_WIDTH / GRID_CELL_SIZE);
-        const gridHeight = Math.floor(REAL_GAME_HEIGHT / GRID_CELL_SIZE);
+        const gridWidth = Math.floor(GAME_WIDTH / GRID_CELL_SIZE);
+        const gridHeight = Math.floor(GAME_HEIGHT / GRID_CELL_SIZE);
         if (gridHeight <= 0 || gridWidth <= 0) {
             console.error("Invalid grid dimensions:", gridWidth, gridHeight); return;
         }
         const occupiedCells = Array(gridHeight).fill(null).map(() => Array(gridWidth).fill(false));
 
-        const startGridX = Math.floor((REAL_GAME_WIDTH / 2) / GRID_CELL_SIZE);
-        const startGridY = Math.floor((REAL_GAME_HEIGHT / 2) / GRID_CELL_SIZE);
+        const startGridX = Math.floor((GAME_WIDTH / 2) / GRID_CELL_SIZE);
+        const startGridY = Math.floor((GAME_HEIGHT / 2) / GRID_CELL_SIZE);
         const clearRadiusGrid = Math.ceil(startClearRadius / GRID_CELL_SIZE);
         for (let dy = -clearRadiusGrid; dy <= clearRadiusGrid; dy++) {
             for (let dx = -clearRadiusGrid; dx <= clearRadiusGrid; dx++) {
@@ -804,8 +804,8 @@ class GameScene extends Phaser.Scene {
         let attempts = 0;
         const maxAttempts = gridWidth * gridHeight;
 
-        const startGridX = Math.floor((REAL_GAME_WIDTH / 2) / GRID_CELL_SIZE);
-        const startGridY = Math.floor((REAL_GAME_HEIGHT / 2) / GRID_CELL_SIZE);
+        const startGridX = Math.floor((GAME_WIDTH / 2) / GRID_CELL_SIZE);
+        const startGridY = Math.floor((GAME_HEIGHT / 2) / GRID_CELL_SIZE);
         const minSpawnDistCells = 8;
 
         while (!cubeSpawned && attempts < maxAttempts) {

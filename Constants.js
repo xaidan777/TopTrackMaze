@@ -1,4 +1,4 @@
-const GAME_VERSION = 'a1b2c3d'
+const GAME_VERSION = 'v0.4.16'
 const GAME_WIDTH = 1024;
 const GAME_HEIGHT = 1024;
 const GRID_CELL_SIZE = 32;
@@ -9,9 +9,10 @@ const MAX_ASPECT_RATIO = 4/3;  // Максимальное соотношени�
 
 // Добавляем коэффициент, чтобы "мир" (уровень), объекты и машина
 // были в 2 раза больше, чем раньше:
-const WORLD_SCALE = 2;
-const REAL_GAME_WIDTH = GAME_WIDTH * WORLD_SCALE; 
-const REAL_GAME_HEIGHT = GAME_HEIGHT * WORLD_SCALE;
+// Убираем WORLD_SCALE для упрощения
+// const WORLD_SCALE = 2;
+// const REAL_GAME_WIDTH = GAME_WIDTH * WORLD_SCALE; 
+// const REAL_GAME_HEIGHT = GAME_HEIGHT * WORLD_SCALE;
 
 const SHADOW_COLOR = 0x000000; // Цвет тени (белый) - используем числовой формат для tint
 const SHADOW_ALPHA = 0.1;      // Прозрачность тени (50%)
@@ -124,9 +125,10 @@ const SHAKE_DURATION         = 300;
 const SHAKE_INTENSITY        = 0.01;
 const RESTART_DELAY          = 1000; 
 
-const CAMERA_BASE_ZOOM = 2;
-const CAMERA_BASE_ZOOM_MOBILE = 1; // Базовый зум для мобильных устройств
-const CAMERA_MAX_ZOOM = 1.5;
+// Уменьшаем зум вдвое, так как убрали WORLD_SCALE=2
+const CAMERA_BASE_ZOOM = 2; // Было 2
+const CAMERA_BASE_ZOOM_MOBILE = 1; // Было 1 // Базовый зум для мобильных устройств
+const CAMERA_MAX_ZOOM = 1.5; // Было 1.5
 const CAMERA_ZOOM_SPEED_THRESHOLD = 1; // Скорость, при которой начинается отдаление
 const CAMERA_ZOOM_SPEED_MAX = 5; // Скорость, при которой достигается максимальное отдаление
 
