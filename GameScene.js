@@ -211,7 +211,7 @@ class GameScene extends Phaser.Scene {
             stroke: '#634125',
             strokeThickness: 6,
             align: 'center'
-        }).setOrigin(0.5, 0).setDepth(21);
+        }).setOrigin(0.3, 0).setDepth(21);
         this.updateFuelDisplay();
 
         this.playAgainButton = this.add.image(0, 0, START_BUTTON_KEY)
@@ -465,7 +465,12 @@ class GameScene extends Phaser.Scene {
 
         // --- Камеры ---
         this.cameras.main.startFollow(this.car, true, 0.05, 0.05);
-        this.cameras.main.setZoom(2);
+        
+        // Определяем, является ли устройство мобильным
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const initialZoom = isMobile ? CAMERA_BASE_ZOOM_MOBILE : CAMERA_BASE_ZOOM;
+        this.cameras.main.setZoom(initialZoom);
+        
         this.cameras.main.setDeadzone(50, 50);
 
         this.uiCamera = this.cameras.add(0, 0, GAME_WIDTH, GAME_HEIGHT);
@@ -1162,24 +1167,30 @@ class GameScene extends Phaser.Scene {
 
         if (nextSpeed !== undefined) {
             this.car.setData('speed', nextSpeed);
-            // Обновляем зум камеры при изменении скорости
-            const currentSpeed = nextSpeed;
-            if (currentSpeed >= CAMERA_ZOOM_SPEED_THRESHOLD) {
-                const speedFactor = (currentSpeed - CAMERA_ZOOM_SPEED_THRESHOLD) / (CAMERA_ZOOM_SPEED_MAX - CAMERA_ZOOM_SPEED_THRESHOLD);
-                const targetZoom = Phaser.Math.Linear(CAMERA_BASE_ZOOM, CAMERA_MAX_ZOOM, speedFactor);
-                this.tweens.add({
-                    targets: this.cameras.main,
-                    zoom: targetZoom,
-                    duration: TURN_DURATION,
-                    ease: 'Linear'
-                });
-            } else {
-                this.tweens.add({
-                    targets: this.cameras.main,
-                    zoom: CAMERA_BASE_ZOOM,
-                    duration: TURN_DURATION,
-                    ease: 'Linear'
-                });
+            
+            // Определяем тип устройства
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            
+            // Изменяем зум только для десктопной версии
+            if (!isMobile) {
+                const currentSpeed = nextSpeed;
+                if (currentSpeed >= CAMERA_ZOOM_SPEED_THRESHOLD) {
+                    const speedFactor = (currentSpeed - CAMERA_ZOOM_SPEED_THRESHOLD) / (CAMERA_ZOOM_SPEED_MAX - CAMERA_ZOOM_SPEED_THRESHOLD);
+                    const targetZoom = Phaser.Math.Linear(CAMERA_BASE_ZOOM, CAMERA_MAX_ZOOM, speedFactor);
+                    this.tweens.add({
+                        targets: this.cameras.main,
+                        zoom: targetZoom,
+                        duration: TURN_DURATION,
+                        ease: 'Linear'
+                    });
+                } else {
+                    this.tweens.add({
+                        targets: this.cameras.main,
+                        zoom: CAMERA_BASE_ZOOM,
+                        duration: TURN_DURATION,
+                        ease: 'Linear'
+                    });
+                }
             }
         }
 

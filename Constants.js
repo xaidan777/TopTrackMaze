@@ -125,6 +125,7 @@ const SHAKE_INTENSITY        = 0.01;
 const RESTART_DELAY          = 1000; 
 
 const CAMERA_BASE_ZOOM = 2;
+const CAMERA_BASE_ZOOM_MOBILE = 1; // Базовый зум для мобильных устройств
 const CAMERA_MAX_ZOOM = 1.5;
 const CAMERA_ZOOM_SPEED_THRESHOLD = 1; // Скорость, при которой начинается отдаление
 const CAMERA_ZOOM_SPEED_MAX = 5; // Скорость, при которой достигается максимальное отдаление

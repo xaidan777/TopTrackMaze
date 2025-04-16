@@ -22,6 +22,10 @@ class MainMenuScene extends Phaser.Scene {
         const centerX = gameWidth / 2;
         const centerY = gameHeight / 2;
 
+        // Определяем, является ли устройство мобильным
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const buttonScale = isMobile ? 0.67 : 1; // 1/1.5 ≈ 0.67
+
         // Добавляем пэкшот (фон) с центрированием
         this.background = this.add.image(centerX, centerY, 'packshot');
         this.background.setOrigin(0.5, 0.5);
@@ -34,11 +38,13 @@ class MainMenuScene extends Phaser.Scene {
         this.background.setScale(scale);
 
         // --- Конфигурация кнопок меню ---
-        const buttonWidth = 338;
-        const buttonHeight = 100;
+        const baseButtonWidth = 338;
+        const baseButtonHeight = 100;
+        const buttonWidth = baseButtonWidth * buttonScale;
+        const buttonHeight = baseButtonHeight * buttonScale;
         const buttonSpacing = 20;
         const shadowOffsetX = 0;
-        const shadowOffsetY = 5;
+        const shadowOffsetY = 5 * buttonScale; // Масштабируем и смещение тени
         const shadowColor = 0x2f1c00;
         const shadowAlpha = 0.5;
         const fadeInDuration = 200;
@@ -56,12 +62,9 @@ class MainMenuScene extends Phaser.Scene {
         // --- Создаем кнопки меню ---
         buttonsData.forEach((buttonInfo, index) => {
             // Вычисляем позицию кнопки относительно центра экрана
-            // STARTGAME в центре, остальные под ней
             const buttonY = centerY + index * (buttonHeight + buttonSpacing);
             const container = this.add.container(centerX, buttonY);
-            container.setSize(buttonWidth, buttonHeight);
-            container.setAlpha(0);
-
+            
             // 1. Создаем изображение для тени
             const shadowImage = this.add.image(
                 shadowOffsetX,
@@ -71,20 +74,29 @@ class MainMenuScene extends Phaser.Scene {
             shadowImage.setOrigin(0.5, 0.5);
             shadowImage.setTintFill(shadowColor);
             shadowImage.setAlpha(shadowAlpha);
+            shadowImage.setScale(buttonScale);
             container.add(shadowImage);
 
-            const button = this.add.image(0, 0, buttonInfo.key).setOrigin(0.5, 0.5);
+            const button = this.add.image(0, 0, buttonInfo.key)
+                .setOrigin(0.5, 0.5)
+                .setScale(buttonScale);
             container.add(button);
 
-            container.setInteractive();
+            // Создаем невидимую кнопку для обработки кликов
+            const hitArea = this.add.rectangle(0, 0, baseButtonWidth, baseButtonHeight);
+            hitArea.setScale(buttonScale);
+            hitArea.setOrigin(0.5, 0.5);
+            hitArea.setInteractive();
+            container.add(hitArea);
 
-            container.on('pointerdown', () => {
+            hitArea.on('pointerdown', () => {
                 this.handleButtonClick(buttonInfo.action);
             });
 
-            container.on('pointerover', () => { button.setTint(0xf7cf79); });
-            container.on('pointerout', () => { button.clearTint(); });
+            hitArea.on('pointerover', () => { button.setTint(0xf7cf79); });
+            hitArea.on('pointerout', () => { button.clearTint(); });
 
+            container.setAlpha(0);
             this.menuButtons.push(container);
 
             this.tweens.add({
@@ -124,6 +136,10 @@ class MainMenuScene extends Phaser.Scene {
         const height = this.scale.height;
         const aspectRatio = width / height;
 
+        // Определяем, является ли устройство мобильным
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const buttonScale = isMobile ? 0.67 : 1;
+
         // Ограничиваем соотношение сторон
         let newWidth = width;
         let newHeight = height;
@@ -157,7 +173,8 @@ class MainMenuScene extends Phaser.Scene {
         }
 
         // Обновляем позиции кнопок
-        const buttonHeight = 100;
+        const baseButtonHeight = 100;
+        const buttonHeight = baseButtonHeight * buttonScale;
         const buttonSpacing = 20;
         this.menuButtons.forEach((button, index) => {
             const buttonY = centerY + index * (buttonHeight + buttonSpacing);
