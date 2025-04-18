@@ -14,8 +14,8 @@ class GameScene extends Phaser.Scene {
         this.arcController = null;
         this.debugMode = false;
 
-        this.infoText = null;
         this.levelText = null;
+        this.speedText = null;
         this.fuelText = null;
         this.isMoving = false;
         this.obstaclesGroup = null;
@@ -64,15 +64,15 @@ class GameScene extends Phaser.Scene {
     preload() {
         console.log("Preloading GameScene assets...");
 
-        this.load.image(CAR_PLAYER_KEY, 'assets/car_player.png?v=__GIT_HASH__');
-        this.load.image(SAND_TEXTURE_KEY, 'assets/sand_texture.jpg?v=__GIT_HASH__');
-        this.load.image(OBSTACLE_IMAGE_KEY, 'assets/block.png?v=__GIT_HASH__');
-        this.load.image(RESTART_BUTTON_KEY, 'assets/restart.png?v=__GIT_HASH__');
-        this.load.image(START_BUTTON_KEY, 'assets/STARTGAME.png?v=__GIT_HASH__');
-        this.load.image(NEXT_LEVEL_BUTTON_KEY, 'assets/NEXTLEVEL.png?v=__GIT_HASH__');
-        this.load.image(FUEL_PICKUP_KEY, 'assets/fuel.png?v=__GIT_HASH__');
-        this.load.image(PORTAL_KEY, 'assets/portal.png?v=__GIT_HASH__');
-        this.load.image('arrow', 'assets/arrow.png?v=__GIT_HASH__');
+        this.load.image(CAR_PLAYER_KEY, 'assets/car_player.png?v=' + GAME_VERSION);
+        this.load.image(SAND_TEXTURE_KEY, 'assets/sand_texture.jpg?v=' + GAME_VERSION);
+        this.load.image(OBSTACLE_IMAGE_KEY, 'assets/block.png?v=' + GAME_VERSION);
+        this.load.image(RESTART_BUTTON_KEY, 'assets/restart.png?v=' + GAME_VERSION);
+        this.load.image(START_BUTTON_KEY, 'assets/STARTGAME.png?v=' + GAME_VERSION);
+        this.load.image(NEXT_LEVEL_BUTTON_KEY, 'assets/NEXTLEVEL.png?v=' + GAME_VERSION);
+        this.load.image(FUEL_PICKUP_KEY, 'assets/fuel.png?v=' + GAME_VERSION);
+        this.load.image(PORTAL_KEY, 'assets/portal.png?v=' + GAME_VERSION);
+        this.load.image('arrow', 'assets/arrow.png?v=' + GAME_VERSION);
     }
 
     create() {
@@ -146,7 +146,7 @@ class GameScene extends Phaser.Scene {
         });
         this.car.angle = -90;
         this.car.body.setCircle(carRadius);
-        this.car.body.setOffset(70, 20);
+        this.car.body.setOffset(65, 20);
         this.car.setCollideWorldBounds(true).setDepth(10);
 
         // --- Создание тени для машины ---
@@ -160,7 +160,14 @@ class GameScene extends Phaser.Scene {
 
         // --- Спавн топлива ---
         for (let i = 0; i < 10; i++) {
-            this.spawnFuelPickup(this.occupiedCellsForSpawning, this.gridWidthForSpawning, this.gridHeightForSpawning);
+            if (this.levelGenerator) {
+                this.levelGenerator.spawnFuelPickup(
+                    this.occupiedCellsForSpawning, 
+                    this.gridWidthForSpawning, 
+                    this.gridHeightForSpawning,
+                    this.fuelPickupGroup
+                );
+            }
         }
 
         // --- Создание графики и объектов для ArcController ---
@@ -226,9 +233,15 @@ class GameScene extends Phaser.Scene {
                 this.scene.restart();
             }
         });
+        this.restartButtonObject.on('pointerover', () => {
+            this.restartButtonObject.setTint(0xcccccc);
+        });
+        this.restartButtonObject.on('pointerout', () => {
+            this.restartButtonObject.clearTint();
+        });
 
         this.winText = this.add.text(0, 0, 'LEVEL COMPLETE!', {
-            font: 'bold 36px Courier New',
+            font: 'bold 28px Courier New',
             fill: '#ffff00',
             stroke: '#634125',
             strokeThickness: 6,
@@ -240,10 +253,16 @@ class GameScene extends Phaser.Scene {
             this.nextLevelButton = this.add.image(0, 0, NEXT_LEVEL_BUTTON_KEY)
                 .setVisible(false).setInteractive({ useHandCursor: true })
                 .on('pointerdown', this.startNextLevel, this);
+            this.nextLevelButton.on('pointerover', () => {
+                this.nextLevelButton.setTint(0xcccccc);
+            });
+            this.nextLevelButton.on('pointerout', () => {
+                this.nextLevelButton.clearTint();
+            });
         }
 
         this.restartLevelText = this.add.text(0, 0, '', {
-            font: 'bold 36px Courier New',
+            font: 'bold 24px Courier New',
             fill: '#ffff00',
             stroke: '#634125',
             strokeThickness: 6,
@@ -490,9 +509,14 @@ class GameScene extends Phaser.Scene {
         ]);
 
         const mainCameraIgnoreList = [
-            this.levelText, this.fuelText,
-            this.playAgainButton, this.restartButtonObject, this.winText,
-            this.nextLevelButton, this.restartLevelText
+            this.levelText,
+            this.speedText,
+            this.fuelText,
+            this.playAgainButton,
+            this.restartButtonObject,
+            this.winText,
+            this.nextLevelButton,
+            this.restartLevelText
         ].filter(item => item);
         if (mainCameraIgnoreList.length > 0) {
             this.cameras.main.ignore(mainCameraIgnoreList);
@@ -600,302 +624,22 @@ class GameScene extends Phaser.Scene {
 
     // --- Генерация уровня ---
     createLevel() {
-        console.log("Creating level obstacles, border, and cube...");
-        if (this.obstaclesGroup) this.obstaclesGroup.clear(true, true);
-        if (this.obstacleShadowsGroup) this.obstacleShadowsGroup.clear(true, true);
-        if (this.collectibleGroup) this.collectibleGroup.clear(true, true);
-        if (this.fuelPickupGroup) this.fuelPickupGroup.clear(true, true);
-
-        if (!this.noise) {
-            console.error("Noise generator not initialized!");
-            return;
-        }
-        const noiseGenerator = this.noise;
-        const scale = NOISE_SCALE;
-        const threshold = this.currentObstacleThreshold;
-        const startClearRadius = GRID_CELL_SIZE * START_AREA_CLEAR_RADIUS_FACTOR;
-
-        const gridWidth = Math.floor(GAME_WIDTH / GRID_CELL_SIZE);
-        const gridHeight = Math.floor(GAME_HEIGHT / GRID_CELL_SIZE);
-        if (gridHeight <= 0 || gridWidth <= 0) {
-            console.error("Invalid grid dimensions:", gridWidth, gridHeight); return;
-        }
-        const occupiedCells = Array(gridHeight).fill(null).map(() => Array(gridWidth).fill(false));
-
-        const startGridX = Math.floor((GAME_WIDTH / 2) / GRID_CELL_SIZE);
-        const startGridY = Math.floor((GAME_HEIGHT / 2) / GRID_CELL_SIZE);
-        const clearRadiusGrid = Math.ceil(startClearRadius / GRID_CELL_SIZE);
-        for (let dy = -clearRadiusGrid; dy <= clearRadiusGrid; dy++) {
-            for (let dx = -clearRadiusGrid; dx <= clearRadiusGrid; dx++) {
-                const checkX = startGridX + dx;
-                const checkY = startGridY + dy;
-                if (checkX >= 0 && checkX < gridWidth && checkY >= 0 && checkY < gridHeight) {
-                    if (Phaser.Math.Distance.Between(startGridX, startGridY, checkX, checkY) <= clearRadiusGrid) {
-                        occupiedCells[checkY][checkX] = true;
-                    }
-                }
-            }
+        if (!this.levelGenerator) {
+            this.levelGenerator = new LevelGenerator(this);
         }
 
-        for (let gy = 0; gy < gridHeight; gy++) {
-            for (let gx = 0; gx < gridWidth; gx++) {
-                const cellCenterX = gx * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
-                const cellCenterY = gy * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
-                if (occupiedCells[gy][gx]) continue;
-                if (noiseGenerator.noise2D(cellCenterX / scale, cellCenterY / scale) > threshold) {
-                    const obstacle = this.obstaclesGroup.create(cellCenterX, cellCenterY, OBSTACLE_IMAGE_KEY);
-                    obstacle.setScale(0.5);
-                    obstacle.setDepth(-1);
+        const result = this.levelGenerator.createLevel({
+            obstaclesGroup: this.obstaclesGroup,
+            obstacleShadowsGroup: this.obstacleShadowsGroup,
+            collectibleGroup: this.collectibleGroup,
+            currentObstacleThreshold: this.currentObstacleThreshold
+        });
 
-                    const shadow = this.add.sprite(obstacle.x + 2, obstacle.y + SHADOW_OFFSET_Y, OBSTACLE_IMAGE_KEY);
-                    shadow.setScale(obstacle.scale);
-                    shadow.setOrigin(obstacle.originX, obstacle.originY);
-                    shadow.setTint(SHADOW_COLOR);
-                    shadow.setAlpha(SHADOW_ALPHA);
-                    shadow.setDepth(obstacle.depth + SHADOW_DEPTH_OFFSET);
-                    if (this.obstacleShadowsGroup) {
-                        this.obstacleShadowsGroup.add(shadow);
-                    }
-
-                    const collisionSize = GRID_CELL_SIZE * 0.8;
-                    const originalSize = GRID_CELL_SIZE;
-                    const offsetX = (originalSize - collisionSize) / 2;
-                    const offsetY = (originalSize - collisionSize) / 2;
-
-                    obstacle.body.setSize(collisionSize, collisionSize);
-                    obstacle.body.setOffset(offsetX, offsetY);
-                    obstacle.refreshBody();
-
-                    occupiedCells[gy][gx] = true;
-                }
-            }
-        }
-        console.log(`Generated ${this.obstaclesGroup.getLength()} obstacles from noise.`);
-
-        let borderObstaclesCount = 0;
-        for (let gx = 0; gx < gridWidth; gx++) {
-            const topX = gx * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
-            const topY = GRID_CELL_SIZE / 2;
-            const bottomY = (gridHeight - 1) * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
-
-            if (!occupiedCells[0][gx]) {
-                const obstacle = this.obstaclesGroup.create(topX, topY, OBSTACLE_IMAGE_KEY);
-                obstacle.setScale(0.5);
-                obstacle.setDepth(-1);
-
-                const shadow = this.add.sprite(obstacle.x + 2, obstacle.y + SHADOW_OFFSET_Y, OBSTACLE_IMAGE_KEY);
-                shadow.setScale(obstacle.scale);
-                shadow.setOrigin(obstacle.originX, obstacle.originY);
-                shadow.setTint(SHADOW_COLOR);
-                shadow.setAlpha(SHADOW_ALPHA);
-                shadow.setDepth(obstacle.depth + SHADOW_DEPTH_OFFSET);
-                if (this.obstacleShadowsGroup) this.obstacleShadowsGroup.add(shadow);
-
-                const collisionSize = GRID_CELL_SIZE * 0.8;
-                const originalSize = GRID_CELL_SIZE;
-                const offsetX = (originalSize - collisionSize) / 2;
-                const offsetY = (originalSize - collisionSize) / 2;
-
-                obstacle.body.setSize(collisionSize, collisionSize);
-                obstacle.body.setOffset(offsetX, offsetY);
-                obstacle.refreshBody();
-
-                occupiedCells[0][gx] = true;
-                borderObstaclesCount++;
-            }
-            if (gridHeight > 1 && !occupiedCells[gridHeight - 1][gx]) {
-                const obstacle = this.obstaclesGroup.create(topX, bottomY, OBSTACLE_IMAGE_KEY);
-                obstacle.setScale(0.5);
-                obstacle.setDepth(-1);
-
-                const shadow = this.add.sprite(obstacle.x + 2, obstacle.y + SHADOW_OFFSET_Y, OBSTACLE_IMAGE_KEY);
-                shadow.setScale(obstacle.scale);
-                shadow.setOrigin(obstacle.originX, obstacle.originY);
-                shadow.setTint(SHADOW_COLOR);
-                shadow.setAlpha(SHADOW_ALPHA);
-                shadow.setDepth(obstacle.depth + SHADOW_DEPTH_OFFSET);
-                if (this.obstacleShadowsGroup) this.obstacleShadowsGroup.add(shadow);
-
-                const collisionSize = GRID_CELL_SIZE * 0.8;
-                const originalSize = GRID_CELL_SIZE;
-                const offsetX = (originalSize - collisionSize) / 2;
-                const offsetY = (originalSize - collisionSize) / 2;
-
-                obstacle.body.setSize(collisionSize, collisionSize);
-                obstacle.body.setOffset(offsetX, offsetY);
-                obstacle.refreshBody();
-
-                occupiedCells[gridHeight - 1][gx] = true;
-                borderObstaclesCount++;
-            }
-        }
-        for (let gy = 1; gy < gridHeight - 1; gy++) {
-            const leftX = GRID_CELL_SIZE / 2;
-            const leftY = gy * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
-            const rightX = (gridWidth - 1) * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
-
-            if (!occupiedCells[gy][0]) {
-                const obstacle = this.obstaclesGroup.create(leftX, leftY, OBSTACLE_IMAGE_KEY);
-                obstacle.setScale(0.5);
-                obstacle.setDepth(-1);
-
-                const shadow = this.add.sprite(obstacle.x + 2, obstacle.y + SHADOW_OFFSET_Y, OBSTACLE_IMAGE_KEY);
-                shadow.setScale(obstacle.scale);
-                shadow.setOrigin(obstacle.originX, obstacle.originY);
-                shadow.setTint(SHADOW_COLOR);
-                shadow.setAlpha(SHADOW_ALPHA);
-                shadow.setDepth(obstacle.depth + SHADOW_DEPTH_OFFSET);
-                if (this.obstacleShadowsGroup) this.obstacleShadowsGroup.add(shadow);
-
-                const collisionSize = GRID_CELL_SIZE * 0.8;
-                const originalSize = GRID_CELL_SIZE;
-                const offsetX = (originalSize - collisionSize) / 2;
-                const offsetY = (originalSize - collisionSize) / 2;
-
-                obstacle.body.setSize(collisionSize, collisionSize);
-                obstacle.body.setOffset(offsetX, offsetY);
-                obstacle.refreshBody();
-
-                occupiedCells[gy][0] = true;
-                borderObstaclesCount++;
-            }
-            if (gridWidth > 1 && !occupiedCells[gy][gridWidth - 1]) {
-                const obstacle = this.obstaclesGroup.create(rightX, leftY, OBSTACLE_IMAGE_KEY);
-                obstacle.setScale(0.5);
-                obstacle.setDepth(-1);
-
-                const shadow = this.add.sprite(obstacle.x + 2, obstacle.y + SHADOW_OFFSET_Y, OBSTACLE_IMAGE_KEY);
-                shadow.setScale(obstacle.scale);
-                shadow.setOrigin(obstacle.originX, obstacle.originY);
-                shadow.setTint(SHADOW_COLOR);
-                shadow.setAlpha(SHADOW_ALPHA);
-                shadow.setDepth(obstacle.depth + SHADOW_DEPTH_OFFSET);
-                if (this.obstacleShadowsGroup) this.obstacleShadowsGroup.add(shadow);
-
-                const collisionSize = GRID_CELL_SIZE * 0.8;
-                const originalSize = GRID_CELL_SIZE;
-                const offsetX = (originalSize - collisionSize) / 2;
-                const offsetY = (originalSize - collisionSize) / 2;
-
-                obstacle.body.setSize(collisionSize, collisionSize);
-                obstacle.body.setOffset(offsetX, offsetY);
-                obstacle.refreshBody();
-
-                occupiedCells[gy][gridWidth - 1] = true;
-                borderObstaclesCount++;
-            }
-        }
-        console.log(`Added ${borderObstaclesCount} border obstacles.`);
-        console.log(`Total obstacles on level: ${this.obstaclesGroup.getLength()}. Total shadows: ${this.obstacleShadowsGroup?.getLength() ?? 0}.`);
-
-        this.spawnCube(occupiedCells, gridWidth, gridHeight);
-
-        this.occupiedCellsForSpawning = occupiedCells;
-        this.gridWidthForSpawning = gridWidth;
-        this.gridHeightForSpawning = gridHeight;
-    }
-
-    spawnCube(occupiedCells, gridWidth, gridHeight) {
-        if (!this.collectibleGroup) {
-            console.error("Collectible group not initialized!");
-            return;
-        }
-        let cubeSpawned = false;
-        let attempts = 0;
-        const maxAttempts = gridWidth * gridHeight;
-
-        const startGridX = Math.floor((GAME_WIDTH / 2) / GRID_CELL_SIZE);
-        const startGridY = Math.floor((GAME_HEIGHT / 2) / GRID_CELL_SIZE);
-        const minSpawnDistCells = 8;
-
-        while (!cubeSpawned && attempts < maxAttempts) {
-            const randomGridX = Phaser.Math.Between(0, gridWidth - 1);
-            const randomGridY = Phaser.Math.Between(0, gridHeight - 1);
-
-            if (
-                randomGridY >= 0 && randomGridY < occupiedCells.length &&
-                randomGridX >= 0 && randomGridX < occupiedCells[randomGridY].length &&
-                !occupiedCells[randomGridY][randomGridX]
-            ) {
-                const distanceInCells = Phaser.Math.Distance.Between(randomGridX, randomGridY, startGridX, startGridY);
-                if (distanceInCells >= minSpawnDistCells) {
-                    const cubeX = randomGridX * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
-                    const cubeY = randomGridY * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
-
-                    const portalSprite = this.collectibleGroup.create(cubeX, cubeY, PORTAL_KEY);
-                    if (portalSprite) {
-                        portalSprite.setOrigin(0.5).setDepth(0);
-                        portalSprite.setScale(1.5);
-                        this.tweens.add({
-                            targets: portalSprite,
-                            scaleY: portalSprite.scaleY * 1.1,
-                            scaleX: portalSprite.scaleX * 0.9,
-                            yoyo: true,
-                            repeat: -1,
-                            ease: 'Sine.easeInOut',
-                            duration: 800
-                        });
-                        this.cube = portalSprite;
-                        occupiedCells[randomGridY][randomGridX] = true;
-                        cubeSpawned = true;
-                        console.log(`Portal spawned at grid (${randomGridX}, ${randomGridY})`);
-                    } else {
-                        console.error("Failed to create portal sprite.");
-                        break;
-                    }
-                }
-            }
-            attempts++;
-        }
-        if (!cubeSpawned) {
-            console.warn(`Could not find a suitable free cell for the portal after ${maxAttempts} attempts!`);
-        }
-    }
-
-    spawnFuelPickup(occupiedCells, gridWidth, gridHeight) {
-        if (!this.fuelPickupGroup || !occupiedCells) {
-            console.error("Fuel pickup group or occupiedCells not initialized!");
-            return;
-        }
-        let pickupSpawned = false;
-        let attempts = 0;
-        const maxAttempts = gridWidth * gridHeight / 2;
-
-        console.log("Attempting to spawn fuel pickup...");
-        while (!pickupSpawned && attempts < maxAttempts) {
-            const randomGridX = Phaser.Math.Between(0, gridWidth - 1);
-            const randomGridY = Phaser.Math.Between(0, gridHeight - 1);
-            if (
-                randomGridY >= 0 && randomGridY < occupiedCells.length &&
-                randomGridX >= 0 && randomGridX < occupiedCells[randomGridY].length &&
-                !occupiedCells[randomGridY][randomGridX]
-            ) {
-                const pickupX = randomGridX * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
-                const pickupY = randomGridY * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
-                const pickup = this.fuelPickupGroup.create(pickupX, pickupY, FUEL_PICKUP_KEY);
-                if (pickup) {
-                    pickup.setOrigin(0.5).setDepth(0);
-                    pickup.setDisplaySize(GRID_CELL_SIZE * 0.8, GRID_CELL_SIZE * 0.8);
-                    this.tweens.add({
-                        targets: pickup,
-                        scale: pickup.scale * 1.1,
-                        yoyo: true,
-                        repeat: -1,
-                        ease: 'Sine.easeInOut',
-                        duration: 700
-                    });
-                    occupiedCells[randomGridY][randomGridX] = true;
-                    pickupSpawned = true;
-                    console.log(`Fuel pickup spawned at grid (${randomGridX}, ${randomGridY})`);
-                } else {
-                    console.error("Failed to create fuel pickup sprite.");
-                    break;
-                }
-            }
-            attempts++;
-        }
-        if (!pickupSpawned) {
-            console.warn(`Could not find a free cell to spawn fuel pickup after ${attempts} attempts.`);
+        if (result) {
+            this.occupiedCellsForSpawning = result.occupiedCells;
+            this.gridWidthForSpawning = result.gridWidth;
+            this.gridHeightForSpawning = result.gridHeight;
+            this.cube = result.portal; // Сохраняем ссылку на портал для стрелки
         }
     }
 

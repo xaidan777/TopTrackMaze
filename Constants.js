@@ -1,4 +1,4 @@
-const GAME_VERSION = 'v0.4.16'
+const GAME_VERSION = '1.0.0'; // Версия игры для кэширования ресурсов
 const GAME_WIDTH = 1024;
 const GAME_HEIGHT = 1024;
 const GRID_CELL_SIZE = 32;
@@ -22,7 +22,7 @@ const SHADOW_DEPTH_OFFSET = -1; // Насколько "ниже" основно�
 const VIRTUAL_JOYSTICK_BLOCK_RADIUS = 20;
 
 // --- Цвета и прозрачность ---
-const COLOR_BRAKE       = 0xaaaaaa;
+const COLOR_BRAKE       = 0xddb0ad;
 const COLOR_ACCELERATE  = 0xadd6dd;
 const COLOR_RED         = 0x3dc9b0;
 const COLOR_REVERSE     = 0xffa500;
@@ -37,7 +37,7 @@ const TRAJECTORY_GAP_LENGTH  = 5;
 const CUBE_ALPHA             = 1.0;
 
 // --- Параметры машины ---  
-const carRadius            = 32;
+const carRadius            = 38;
 const MIN_SPEED            = 0.1;
 const MAX_SPEED            = 5.0;
 const SPEED_INCREMENT      = 1;

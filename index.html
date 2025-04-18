@@ -89,11 +89,17 @@
     <script src="Constants.js?v=__GIT_HASH__"></script>
     <script src="ArcController.js?v=__GIT_HASH__"></script>
     <script src="MainMenuScene.js?v=__GIT_HASH__"></script>
+    <script src="levels.js?v=__GIT_HASH__"></script>
     <script src="GameScene.js?v=__GIT_HASH__"></script>
     <script src="ConsoleCommands.js?v=__GIT_HASH__"></script>
     <script src="main.js?v=__GIT_HASH__"></script>
     <script>
         window.addEventListener('load', () => {
+            // Добавляем версию ко всем скриптам
+            document.querySelectorAll('script[src]').forEach(script => {
+                script.src = script.src + '?v=' + GAME_VERSION;
+            });
+            
             if (window.game) {
                 window.consoleCommands = new ConsoleCommands(window.game);
             }

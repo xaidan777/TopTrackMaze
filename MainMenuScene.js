@@ -5,15 +5,20 @@ class MainMenuScene extends Phaser.Scene {
         this.howtoImage = null;
         this.closeButton = null;
         this.menuButtons = []; // Массив для хранения контейнеров кнопок меню
+        
+        // Константы для кнопок
+        this.BASE_BUTTON_WIDTH = 264;
+        this.BASE_BUTTON_HEIGHT = 78;
+        this.BASE_BUTTON_SPACING = 15;
     }
 
     preload() {
-        this.load.image('packshot', 'assets/MainBG.jpg?v=__GIT_HASH__'); // Замени на путь к твоему пэкшоту
-        this.load.image('STARTGAME', 'assets/STARTGAME.png?v=__GIT_HASH__');
-        this.load.image('HOW', 'assets/HOW.png?v=__GIT_HASH__');
-        this.load.image('CREATOR', 'assets/CREATOR.png?v=__GIT_HASH__');
-        this.load.image('howtoplay', 'assets/howtoplay.png?v=__GIT_HASH__'); // Картинка "Как играть" (728x728)
-        this.load.image('close', 'assets/close.png?v=__GIT_HASH__'); // Кнопка "Закрыть"
+        this.load.image('packshot', 'assets/MainBG.jpg?v=' + GAME_VERSION); // Замени на путь к твоему пэкшоту
+        this.load.image('STARTGAME', 'assets/STARTGAME.png?v=' + GAME_VERSION);
+        this.load.image('HOW', 'assets/HOW.png?v=' + GAME_VERSION);
+        this.load.image('CREATOR', 'assets/CREATOR.png?v=' + GAME_VERSION);
+        this.load.image('howtoplay', 'assets/howtoplay.png?v=' + GAME_VERSION); // Картинка "Как играть" (728x728)
+        this.load.image('close', 'assets/close.png?v=' + GAME_VERSION); // Кнопка "Закрыть"
     }
 
     create() {
@@ -38,11 +43,9 @@ class MainMenuScene extends Phaser.Scene {
         this.background.setScale(scale);
 
         // --- Конфигурация кнопок меню ---
-        const baseButtonWidth = 338;
-        const baseButtonHeight = 100;
-        const buttonWidth = baseButtonWidth * buttonScale;
-        const buttonHeight = baseButtonHeight * buttonScale;
-        const buttonSpacing = 20;
+        const buttonWidth = this.BASE_BUTTON_WIDTH * buttonScale;
+        const buttonHeight = this.BASE_BUTTON_HEIGHT * buttonScale;
+        const buttonSpacing = this.BASE_BUTTON_SPACING * buttonScale;
         const shadowOffsetX = 0;
         const shadowOffsetY = 5 * buttonScale; // Масштабируем и смещение тени
         const shadowColor = 0x2f1c00;
@@ -62,7 +65,7 @@ class MainMenuScene extends Phaser.Scene {
         // --- Создаем кнопки меню ---
         buttonsData.forEach((buttonInfo, index) => {
             // Вычисляем позицию кнопки относительно центра экрана
-            const buttonY = centerY + index * (buttonHeight + buttonSpacing);
+            const buttonY = centerY + index * (buttonHeight + buttonSpacing) - (gameHeight / 20);
             const container = this.add.container(centerX, buttonY);
             
             // 1. Создаем изображение для тени
@@ -83,7 +86,7 @@ class MainMenuScene extends Phaser.Scene {
             container.add(button);
 
             // Создаем невидимую кнопку для обработки кликов
-            const hitArea = this.add.rectangle(0, 0, baseButtonWidth, baseButtonHeight);
+            const hitArea = this.add.rectangle(0, 0, this.BASE_BUTTON_WIDTH, this.BASE_BUTTON_HEIGHT);
             hitArea.setScale(buttonScale);
             hitArea.setOrigin(0.5, 0.5);
             hitArea.setInteractive();
@@ -176,11 +179,10 @@ class MainMenuScene extends Phaser.Scene {
         }
 
         // Обновляем позиции кнопок
-        const baseButtonHeight = 100;
-        const buttonHeight = baseButtonHeight * buttonScale;
-        const buttonSpacing = 20;
+        const buttonHeight = this.BASE_BUTTON_HEIGHT * buttonScale;
+        const buttonSpacing = this.BASE_BUTTON_SPACING * buttonScale;
         this.menuButtons.forEach((button, index) => {
-            const buttonY = centerY + index * (buttonHeight + buttonSpacing);
+            const buttonY = centerY + index * (buttonHeight + buttonSpacing) - (newHeight / 20);
             button.setPosition(centerX, buttonY);
         });
 
