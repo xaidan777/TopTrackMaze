@@ -1,31 +1,29 @@
-const GAME_VERSION = '1.0.0'; // Версия игры для кэширования ресурсов
-const GAME_WIDTH = 1024;
-const GAME_HEIGHT = 1024;
+const GAME_VERSION = '0.4.26'; // Версия игры для кэширования ресурсов
+const GAME_WIDTH = 1064;
+const GAME_HEIGHT = 1064;
 const GRID_CELL_SIZE = 32;
 
 // Соотношения сторон
 const MIN_ASPECT_RATIO = 3/4;  // Минимальное соотношение (вертикальный режим)
 const MAX_ASPECT_RATIO = 4/3;  // Максимальное соотношение (горизонтальный режим)
 
-// Добавляем коэффициент, чтобы "мир" (уровень), объекты и машина
-// были в 2 раза больше, чем раньше:
-// Убираем WORLD_SCALE для упрощения
-// const WORLD_SCALE = 2;
-// const REAL_GAME_WIDTH = GAME_WIDTH * WORLD_SCALE; 
-// const REAL_GAME_HEIGHT = GAME_HEIGHT * WORLD_SCALE;
-
 const SHADOW_COLOR = 0x000000; // Цвет тени (белый) - используем числовой формат для tint
-const SHADOW_ALPHA = 0.1;      // Прозрачность тени (50%)
-const SHADOW_OFFSET_Y = 5;     // Вертикальное смещение тени (в пикселях)
+const SHADOW_ALPHA = 0.3;      // Прозрачность тени (50%)
+const SHADOW_OFFSET_Y = 3;     // Вертикальное смещение тени (в пикселях)
 const SHADOW_DEPTH_OFFSET = -1; // Насколько "ниже" основного спрайта рисовать тень
+
 
 const VIRTUAL_JOYSTICK_BLOCK_RADIUS = 20;
 
 // --- Цвета и прозрачность ---
 const COLOR_BRAKE       = 0xddb0ad;
-const COLOR_ACCELERATE  = 0xadd6dd;
-const COLOR_RED         = 0x3dc9b0;
+const COLOR_ACCELERATE  = 0x7fb1b3;
+const COLOR_NITRO       = 0x3dc9b0;
 const COLOR_REVERSE     = 0xffa500;
+
+// Ключи для текстур арок
+const ARC_SLOW_KEY      = 'arc_slow';
+const ARC_GO_KEY        = 'arc_go';
 
 const ZONE_ALPHA_DEFAULT     = 0.3;
 const ZONE_ALPHA_HOVER       = 1.0;
@@ -36,13 +34,33 @@ const TRAJECTORY_DASH_LENGTH = 10;
 const TRAJECTORY_GAP_LENGTH  = 5;
 const CUBE_ALPHA             = 1.0;
 
+// --- Константы для следов от колес ---
+const TIRE_TRACK_COLOR = 0x333333;  // Цвет следов от колес (темно-серый)
+const TIRE_TRACK_ALPHA = 0.1;       // Прозрачность следов
+const TIRE_TRACK_RADIUS = 3;        // Радиус следа колеса в пикселях
+
+// --- Константы для управления поворотом ---
+// Максимальное угловое отклонение курсора от оси машины, влияющее на радиус поворота (в градусах)
+const MAX_ANGLE_DEVIATION_DEG = 70;
+// Минимальный радиус поворота при клике БЛИЗКО (соответствует макс. отклонению)
+const MIN_TURN_RADIUS_CLOSE = 20;
+// Минимальный радиус поворота при клике ДАЛЕКО (соответствует макс. отклонению)
+const MIN_TURN_RADIUS_FAR = 80;
+// Радиус при нулевом отклонении (для имитации прямой)
+const MAX_POSSIBLE_RADIUS = 3000;
+// Коэффициент влияния ТЕКУЩЕЙ скорости на МИНИМАЛЬНЫЙ радиус (0 = нет влияния, 1 = на макс. скорости мин.радиус всегда MIN_TURN_RADIUS_CLOSE)
+const SPEED_INFLUENCE_ON_MIN_RADIUS = 0.5;
+// Показатель степени для нелинейной интерполяции радиуса при НИЗКОЙ скорости (больше = плавнее руль)
+const RADIUS_SENSITIVITY_EXPONENT_LOW_SPEED = 5;
+// Показатель степени для нелинейной интерполяции радиуса при ВЫСОКОЙ скорости (меньше = резче руль)
+const RADIUS_SENSITIVITY_EXPONENT_HIGH_SPEED = 7;
+
 // --- Параметры машины ---  
-const carRadius            = 38;
+const carRadius            = 11;
 const MIN_SPEED            = 0.1;
 const MAX_SPEED            = 5.0;
 const SPEED_INCREMENT      = 1;
-const RED_ZONE_SPEED_BOOST = 2;
-const RED_ZONE_COOLDOWN_TURNS = 2;
+const RED_ZONE_SPEED_BOOST = 2.5
 
 // --- Параметры арки (GUI) ---
 const BASE_INNER_RADIUS_GUI           = 30;
@@ -55,9 +73,9 @@ const ANGLE_SNAP_THRESHOLD = Phaser.Math.DegToRad(15);
 const GAP_SNAP_THRESHOLD = 15; 
 
 // --- Факторы влияния скорости на ВИД арки (GUI) ---
-const SPEED_TO_GUI_RADIUS_FACTOR      = 40;
+const SPEED_TO_GUI_RADIUS_FACTOR      = 10;
 const GUI_THICKNESS_REDUCTION_FACTOR  = 0.1;
-const MAX_GUI_ANGLE_REDUCTION_FACTOR  = 5;
+const MAX_GUI_ANGLE_REDUCTION_FACTOR  = 2.7;
 const MIN_ARC_ANGLE_DEG               = 25;
 const MIN_ARC_THICKNESS               = 20;
 
@@ -69,13 +87,13 @@ const REVERSE_ARC_ANGLE_DEG     = 20;
 // --- Параметры расчета ДИСТАНЦИИ хода ---
 const MIN_MOVE_DISTANCE_FACTOR  = 0.5;
 const MAX_MOVE_DISTANCE_FACTOR  = 2.5;
-const SPEED_TO_DISTANCE_MULTIPLIER = 15;
+const SPEED_TO_DISTANCE_MULTIPLIER = 20;
 
 // --- Параметры движения и скорости ---
 const BASE_PHYSICS_MOVE_SPEED_FACTOR = 1.0;
 const CLICK_POS_ANIM_SPEED_FACTOR    = 0.8;
 const MIN_ANIM_SPEED_MULTIPLIER      = 0.8;
-const MAX_ANIM_SPEED_MULTIPLIER      = 3.5;
+const MAX_ANIM_SPEED_MULTIPLIER      = 1.5;
 const MIN_VISUAL_ANIM_SPEED          = 50;
 const TURN_DURATION                  = 300;
 const STOP_DISTANCE_THRESHOLD        = 5;
@@ -92,43 +110,146 @@ const START_AREA_CLEAR_RADIUS_FACTOR = 3;
 // Портал
 const PORTAL_KEY                 = 'portal';
 
-// --- Параметры препятствий и другие ---
-const CUBE_SIZE_FACTOR           = 0.8;
-const OBSTACLE_THRESHOLD_DECREMENT = 0.05;
-const MIN_OBSTACLE_THRESHOLD     = 0.2;
-const TOTAL_LEVELS               = 10;
-const INITIAL_OBSTACLE_THRESHOLD = 0.7;
 
 // --- КЛЮЧИ для загруженных ассетов ---
-const SAND_TEXTURE_KEY       = 'sandTexture';
-const OBSTACLE_IMAGE_KEY     = 'obstacleBlock';
+// Пустынный биом (Desert)
+const GROUND_TEXTURE_D_KEY   = 'groundTextureD';
+const BLOCK_D_KEY            = 'blockD';
+// Травянистый биом (Grass)
+const GROUND_TEXTURE_G_KEY   = 'groundTextureG';
+const BLOCK_G_KEY            = 'blockG';
+// Снежный биом (Snow)
+const GROUND_TEXTURE_S_KEY   = 'groundTextureS';
+const BLOCK_S_KEY            = 'blockS';
+
+// Старые ключи (оставим для совместимости или как дефолт)
+const SAND_TEXTURE_KEY       = GROUND_TEXTURE_D_KEY; // 'sandTexture'; - Заменяем на новый ключ
+const OBSTACLE_IMAGE_KEY     = BLOCK_D_KEY; // 'obstacleBlock'; - Заменяем на новый ключ
+
 const MAIN_BG_KEY            = 'mainBg';
 const START_BUTTON_KEY       = 'startButton';
 const CAR_PLAYER_KEY         = 'car_player';
 const RESTART_BUTTON_KEY     = 'restartButton';
 const NEXT_LEVEL_BUTTON_KEY  = 'nextLevelButton';
 const FUEL_PICKUP_KEY        = 'fuelPickup';
+const NITRO_PICKUP_KEY       = 'nitroPickup';
+const SWAMP_KEY              = 'swamp';
+
+// --- Параметры SWAMP ---
+const SWAMP_SPEED_MULTIPLIER = 0.1;
+const SWAMP_SPEED_INCREMENT_PENALTY = 0.25; // Штраф к изменению скорости на болоте
+const SWAMP_THRESHOLD_OFFSET = 0.3; //чем выше значение, тем больше болот
+
+// --- Параметры дронов ---
+const DRONE_KEY               = 'drone';
+// DRONE_MAX_PER_LEVEL определяется в настройках уровней
+const DRONE_RANGE_CELLS       = 1.5;        // дальность рывка за ход
+const DRONE_KILL_RADIUS_CELLS = 1.5;        // радиус перехвата
 
 // --- Параметры прогрессии ---
-const INITIAL_FUEL           = 10;
+const FUEL_COUNT_PER_LEVEL = 7;  // Количество топлива на уровне
+const INITIAL_FUEL = 7;
+const MAX_FUEL = 15;
 const FUEL_CONSUMPTION_PER_MOVE = 1;
-const FUEL_GAIN_ON_PICKUP    = 5;
-const FUEL_LOW_THRESHOLD     = 3;
-const FUEL_COLOR_NORMAL      = '#ffffff';
-const FUEL_COLOR_LOW         = '#ff0000';
+const FUEL_GAIN_ON_PICKUP = 5;
+const FUEL_LOW_THRESHOLD = 3;
+const FUEL_COLOR_NORMAL = '#ffffff';
+const FUEL_COLOR_LOW = '#df2a06';
+
+// --- Параметры NITRO ---
+const NITRO_COUNT_PER_LEVEL = 3;   // Количество нитро на уровне
+const NITRO_AVAILABLE_BY_DEFAULT = false; // Нитро недоступно по умолчанию
 
 // --- Параметры эффектов ---
 const FLASH_DURATION         = 300;
-const FLASH_COLOR            = 0xff0000;
+const FLASH_COLOR            = 0x00ffff;
 const WIN_FLASH_COLOR        = 0x00ff00;
 const SHAKE_DURATION         = 300;
 const SHAKE_INTENSITY        = 0.01;
 const RESTART_DELAY          = 1000; 
 
-// Уменьшаем зум вдвое, так как убрали WORLD_SCALE=2
-const CAMERA_BASE_ZOOM = 2; // Было 2
-const CAMERA_BASE_ZOOM_MOBILE = 1; // Было 1 // Базовый зум для мобильных устройств
+// --- Параметры камеры ---
+const CAMERA_BASE_ZOOM = 1.8; // Было 2
+const CAMERA_BASE_ZOOM_MOBILE = 1; //  Базовый зум для мобильных устройств
 const CAMERA_MAX_ZOOM = 1.5; // Было 1.5
 const CAMERA_ZOOM_SPEED_THRESHOLD = 1; // Скорость, при которой начинается отдаление
 const CAMERA_ZOOM_SPEED_MAX = 5; // Скорость, при которой достигается максимальное отдаление
+
+// --- Параметры скольжения на льду ---
+const SNOW_SKID_FACTOR = 0.50; // 50% сноса
+const SNOW_SKID_EXTRA_ROTATION_MULTIPLIER = 2.0; // Насколько сильно доп. вращение зависит от фактора сноса (1.0 = линейно)
+
+// --- Параметры препятствий и уровней ---
+const CUBE_SIZE_FACTOR           = 0.8;
+const OBSTACLE_THRESHOLD_DECREMENT = 0.05;
+const MIN_OBSTACLE_THRESHOLD     = 0.3;
+const INITIAL_OBSTACLE_THRESHOLD = 0.7;
+
+const TOTAL_LEVELS               = 27;
+
+// --- Цвета биомов ---
+const BIOME_DESERT_COLOR = 0x462d13; // Темно-коричневый для следов и тенейпустыни
+const BIOME_SNOW_COLOR = 0x0a4772;   // Темно-синий для следов и теней снега
+const BIOME_GRASS_COLOR = 0x2f4d17;  // Темно-зеленый для следов и теней травы
+
+// --- Конфигурации биомов ---
+const BIOME_DESERT = {
+    ground: GROUND_TEXTURE_D_KEY,
+    obstacle: BLOCK_D_KEY
+};
+const BIOME_GRASS = {
+    ground: GROUND_TEXTURE_G_KEY,
+    obstacle: BLOCK_G_KEY
+};
+const BIOME_SNOW = {
+    ground: GROUND_TEXTURE_S_KEY,
+    obstacle: BLOCK_S_KEY
+};
+
+// --- Сопоставление уровней, биомов и сложности ---
+const LEVEL_SETTINGS = {
+    1: { biome: BIOME_DESERT, threshold: 0.7, drones: 0 },
+    2: { biome: BIOME_DESERT, threshold: 0.65, drones: 0 },
+    3: { biome: BIOME_DESERT, threshold: 0.6, drones: 0 },
+    4: { biome: BIOME_GRASS, threshold: 0.6, drones: 0 },
+    5: { biome: BIOME_GRASS, threshold: 0.55, drones: 0 },
+    6: { biome: BIOME_GRASS, threshold: 0.5, drones: 0 },
+    7: { biome: BIOME_SNOW, threshold: 0.7, drones: 0 },
+    8: { biome: BIOME_SNOW, threshold: 0.65, drones: 0 },
+    9: { biome: BIOME_SNOW, threshold: 0.6, drones: 0 },
+    10: { biome: BIOME_DESERT, threshold: 0.6, drones: 1 },
+    11: { biome: BIOME_DESERT, threshold: 0.55, drones: 1 },
+    12: { biome: BIOME_DESERT, threshold: 0.5, drones: 2},
+    13: { biome: BIOME_GRASS, threshold: 0.6, drones: 1 },
+    14: { biome: BIOME_GRASS, threshold: 0.55, drones: 1 },
+    15: { biome: BIOME_GRASS, threshold: 0.5, drones: 1 },
+    16: { biome: BIOME_SNOW, threshold: 0.6, drones: 1 },
+    17: { biome: BIOME_SNOW, threshold: 0.55, drones: 1 },
+    18: { biome: BIOME_DESERT, threshold: 0.5, drones: 2 },
+    19: { biome: BIOME_DESERT, threshold: 0.45, drones: 2 },
+    20: { biome: BIOME_DESERT, threshold: 0.4, drones: 2},
+    21: { biome: BIOME_GRASS, threshold: 0.5, drones: 2 },
+    22: { biome: BIOME_GRASS, threshold: 0.45, drones: 2 },
+    23: { biome: BIOME_GRASS, threshold: 0.4, drones: 2 },
+    24: { biome: BIOME_SNOW, threshold: 0.5, drones: 2 },
+    25: { biome: BIOME_DESERT, threshold: 0.35, drones: 3 },
+    26: { biome: BIOME_GRASS, threshold: 0.35, drones: 3 },
+    27: { biome: BIOME_SNOW, threshold: 0.35, drones: 2},
+};
+
+// Для обратной совместимости старый формат
+const LEVEL_BIOMES = {};
+for (const level in LEVEL_SETTINGS) {
+    LEVEL_BIOMES[level] = LEVEL_SETTINGS[level].biome;
+}
+
+// Функция для получения настроек уровня (с фоллбэком на пустынный биом и стандартный порог)
+const getLevelSettings = (level) => {
+    return LEVEL_SETTINGS[level] || { biome: BIOME_DESERT, threshold: INITIAL_OBSTACLE_THRESHOLD };
+};
+
+// Функция для получения биома уровня (для обратной совместимости)
+const getBiomeForLevel = (level) => {
+    return LEVEL_SETTINGS[level]?.biome || BIOME_DESERT;
+};
 

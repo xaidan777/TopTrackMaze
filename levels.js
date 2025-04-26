@@ -9,14 +9,19 @@ class LevelGenerator {
             obstaclesGroup,
             obstacleShadowsGroup,
             collectibleGroup,
-            currentObstacleThreshold
+            swampGroup,
+            currentObstacleThreshold,
+            obstacleAssetKey,
+            shadowColor,
+            isBiomeGrass
         } = params;
 
-        console.log("Creating level obstacles, border, and cube...");
+        console.log("Creating level obstacles, border, and cube using obstacle key:", obstacleAssetKey);
         
         if (obstaclesGroup) obstaclesGroup.clear(true, true);
         if (obstacleShadowsGroup) obstacleShadowsGroup.clear(true, true);
         if (collectibleGroup) collectibleGroup.clear(true, true);
+        if (swampGroup) swampGroup.clear(true, true);
 
         const gridWidth = Math.floor(GAME_WIDTH / GRID_CELL_SIZE);
         const gridHeight = Math.floor(GAME_HEIGHT / GRID_CELL_SIZE);
@@ -31,16 +36,33 @@ class LevelGenerator {
             gridHeight,
             currentObstacleThreshold,
             obstaclesGroup,
-            obstacleShadowsGroup
+            obstacleShadowsGroup,
+            obstacleAssetKey,
+            shadowColor
         });
 
+        // Сначала генерируем границы
         this._generateBorderObstacles({
             gridWidth,
             gridHeight,
             occupiedCells,
             obstaclesGroup,
-            obstacleShadowsGroup
+            obstacleShadowsGroup,
+            obstacleAssetKey,
+            shadowColor
         });
+
+        // Затем генерируем болота только для травянистого биома
+        if (isBiomeGrass && swampGroup) {
+            console.log("Generating swamps for grass biome...");
+            this._generateSwamps({
+                gridWidth,
+                gridHeight,
+                currentObstacleThreshold,
+                swampGroup,
+                occupiedCells
+            });
+        }
 
         const portalSprite = this._spawnCube(occupiedCells, gridWidth, gridHeight, collectibleGroup);
 
@@ -52,7 +74,7 @@ class LevelGenerator {
         };
     }
 
-    _generateObstacles({ gridWidth, gridHeight, currentObstacleThreshold, obstaclesGroup, obstacleShadowsGroup }) {
+    _generateObstacles({ gridWidth, gridHeight, currentObstacleThreshold, obstaclesGroup, obstacleShadowsGroup, obstacleAssetKey, shadowColor }) {
         const occupiedCells = Array(gridHeight).fill(null).map(() => Array(gridWidth).fill(false));
         const startGridX = Math.floor((GAME_WIDTH / 2) / GRID_CELL_SIZE);
         const startGridY = Math.floor((GAME_HEIGHT / 2) / GRID_CELL_SIZE);
@@ -78,14 +100,14 @@ class LevelGenerator {
                 const cellCenterY = gy * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
                 if (occupiedCells[gy][gx]) continue;
                 if (this.noise.noise2D(cellCenterX / NOISE_SCALE, cellCenterY / NOISE_SCALE) > currentObstacleThreshold) {
-                    const obstacle = obstaclesGroup.create(cellCenterX, cellCenterY, OBSTACLE_IMAGE_KEY);
+                    const obstacle = obstaclesGroup.create(cellCenterX, cellCenterY, obstacleAssetKey);
                     obstacle.setScale(0.5);
                     obstacle.setDepth(-1);
 
-                    const shadow = this.scene.add.sprite(obstacle.x + 2, obstacle.y + SHADOW_OFFSET_Y, OBSTACLE_IMAGE_KEY);
+                    const shadow = this.scene.add.sprite(obstacle.x + 2, obstacle.y + SHADOW_OFFSET_Y, obstacleAssetKey);
                     shadow.setScale(obstacle.scale);
                     shadow.setOrigin(obstacle.originX, obstacle.originY);
-                    shadow.setTint(SHADOW_COLOR);
+                    shadow.setTint(shadowColor);
                     shadow.setAlpha(SHADOW_ALPHA);
                     shadow.setDepth(obstacle.depth + SHADOW_DEPTH_OFFSET);
                     obstacleShadowsGroup.add(shadow);
@@ -107,7 +129,7 @@ class LevelGenerator {
         return occupiedCells;
     }
 
-    _generateBorderObstacles({ gridWidth, gridHeight, occupiedCells, obstaclesGroup, obstacleShadowsGroup }) {
+    _generateBorderObstacles({ gridWidth, gridHeight, occupiedCells, obstaclesGroup, obstacleShadowsGroup, obstacleAssetKey, shadowColor }) {
         let borderObstaclesCount = 0;
 
         // Верхняя и нижняя границы
@@ -117,12 +139,12 @@ class LevelGenerator {
             const bottomY = (gridHeight - 1) * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
 
             if (!occupiedCells[0][gx]) {
-                this._createBorderObstacle(topX, topY, obstaclesGroup, obstacleShadowsGroup);
+                this._createBorderObstacle(topX, topY, obstaclesGroup, obstacleShadowsGroup, obstacleAssetKey, shadowColor);
                 occupiedCells[0][gx] = true;
                 borderObstaclesCount++;
             }
             if (gridHeight > 1 && !occupiedCells[gridHeight - 1][gx]) {
-                this._createBorderObstacle(topX, bottomY, obstaclesGroup, obstacleShadowsGroup);
+                this._createBorderObstacle(topX, bottomY, obstaclesGroup, obstacleShadowsGroup, obstacleAssetKey, shadowColor);
                 occupiedCells[gridHeight - 1][gx] = true;
                 borderObstaclesCount++;
             }
@@ -135,12 +157,12 @@ class LevelGenerator {
             const rightX = (gridWidth - 1) * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
 
             if (!occupiedCells[gy][0]) {
-                this._createBorderObstacle(leftX, leftY, obstaclesGroup, obstacleShadowsGroup);
+                this._createBorderObstacle(leftX, leftY, obstaclesGroup, obstacleShadowsGroup, obstacleAssetKey, shadowColor);
                 occupiedCells[gy][0] = true;
                 borderObstaclesCount++;
             }
             if (gridWidth > 1 && !occupiedCells[gy][gridWidth - 1]) {
-                this._createBorderObstacle(rightX, leftY, obstaclesGroup, obstacleShadowsGroup);
+                this._createBorderObstacle(rightX, leftY, obstaclesGroup, obstacleShadowsGroup, obstacleAssetKey, shadowColor);
                 occupiedCells[gy][gridWidth - 1] = true;
                 borderObstaclesCount++;
             }
@@ -149,15 +171,15 @@ class LevelGenerator {
         console.log(`Added ${borderObstaclesCount} border obstacles.`);
     }
 
-    _createBorderObstacle(x, y, obstaclesGroup, obstacleShadowsGroup) {
-        const obstacle = obstaclesGroup.create(x, y, OBSTACLE_IMAGE_KEY);
+    _createBorderObstacle(x, y, obstaclesGroup, obstacleShadowsGroup, obstacleAssetKey, shadowColor) {
+        const obstacle = obstaclesGroup.create(x, y, obstacleAssetKey);
         obstacle.setScale(0.5);
         obstacle.setDepth(-1);
 
-        const shadow = this.scene.add.sprite(obstacle.x + 2, obstacle.y + SHADOW_OFFSET_Y, OBSTACLE_IMAGE_KEY);
+        const shadow = this.scene.add.sprite(obstacle.x + 2, obstacle.y + SHADOW_OFFSET_Y, obstacleAssetKey);
         shadow.setScale(obstacle.scale);
         shadow.setOrigin(obstacle.originX, obstacle.originY);
-        shadow.setTint(SHADOW_COLOR);
+        shadow.setTint(shadowColor);
         shadow.setAlpha(SHADOW_ALPHA);
         shadow.setDepth(obstacle.depth + SHADOW_DEPTH_OFFSET);
         obstacleShadowsGroup.add(shadow);
@@ -185,7 +207,7 @@ class LevelGenerator {
 
         const startGridX = Math.floor((GAME_WIDTH / 2) / GRID_CELL_SIZE);
         const startGridY = Math.floor((GAME_HEIGHT / 2) / GRID_CELL_SIZE);
-        const minSpawnDistCells = 8;
+        const minSpawnDistCells = 12;
 
         while (!cubeSpawned && attempts < maxAttempts) {
             const randomGridX = Phaser.Math.Between(0, gridWidth - 1);
@@ -275,5 +297,94 @@ class LevelGenerator {
         }
         
         return pickup;
+    }
+    
+    spawnNitroPickup(occupiedCells, gridWidth, gridHeight, nitroPickupGroup) {
+        if (!nitroPickupGroup || !occupiedCells) {
+            console.error("Nitro pickup group or occupiedCells not initialized!");
+            return null;
+        }
+        let pickupSpawned = false;
+        let attempts = 0;
+        const maxAttempts = gridWidth * gridHeight / 2;
+        let pickup = null;
+
+        console.log("Attempting to spawn nitro pickup...");
+        while (!pickupSpawned && attempts < maxAttempts) {
+            const randomGridX = Phaser.Math.Between(0, gridWidth - 1);
+            const randomGridY = Phaser.Math.Between(0, gridHeight - 1);
+            if (
+                randomGridY >= 0 && randomGridY < occupiedCells.length &&
+                randomGridX >= 0 && randomGridX < occupiedCells[randomGridY].length &&
+                !occupiedCells[randomGridY][randomGridX]
+            ) {
+                const pickupX = randomGridX * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
+                const pickupY = randomGridY * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
+                pickup = nitroPickupGroup.create(pickupX, pickupY, NITRO_PICKUP_KEY);
+                if (pickup) {
+                    pickup.setOrigin(0.5).setDepth(0);
+                    pickup.setDisplaySize(GRID_CELL_SIZE * 0.8, GRID_CELL_SIZE * 0.8);
+                    this.scene.tweens.add({
+                        targets: pickup,
+                        scale: pickup.scale * 1.1,
+                        yoyo: true,
+                        repeat: -1,
+                        ease: 'Sine.easeInOut',
+                        duration: 700
+                    });
+                    occupiedCells[randomGridY][randomGridX] = true;
+                    pickupSpawned = true;
+                    console.log(`Nitro pickup spawned at grid (${randomGridX}, ${randomGridY})`);
+                }
+            }
+            attempts++;
+        }
+        if (!pickupSpawned) {
+            console.warn(`Could not find a free cell to spawn nitro pickup after ${attempts} attempts.`);
+        }
+        
+        return pickup;
+    }
+
+    _generateSwamps({ gridWidth, gridHeight, currentObstacleThreshold, swampGroup, occupiedCells }) {
+        // Используем порог для болот ниже, чем для препятствий
+        const swampThreshold = currentObstacleThreshold - SWAMP_THRESHOLD_OFFSET;
+        console.log(`Generating swamps with threshold: ${swampThreshold.toFixed(2)}`);
+
+        // Генерируем болота
+        for (let gy = 0; gy < gridHeight; gy++) {
+            for (let gx = 0; gx < gridWidth; gx++) {
+                // Пропускаем граничные клетки
+                if (gy === 0 || gy === gridHeight - 1 || gx === 0 || gx === gridWidth - 1) {
+                    continue;
+                }
+                
+                const cellCenterX = gx * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
+                const cellCenterY = gy * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
+                
+                // Проверяем, что клетка не занята
+                if (occupiedCells[gy][gx]) continue;
+                
+                // Используем тот же шум, но с другим порогом
+                if (this.noise.noise2D(cellCenterX / NOISE_SCALE, cellCenterY / NOISE_SCALE) > swampThreshold) {
+                    const swamp = swampGroup.create(cellCenterX, cellCenterY, SWAMP_KEY);
+                    swamp.setScale(0.5);
+                    swamp.setDepth(-2); // Ниже уровня препятствий, чтобы они были видны над болотом
+                    
+                    // Настраиваем физическое тело для болота
+                    const collisionSize = GRID_CELL_SIZE * 0.8;
+                    const originalSize = GRID_CELL_SIZE;
+                    const offsetX = (originalSize - collisionSize) / 2;
+                    const offsetY = (originalSize - collisionSize) / 2;
+                    
+                    swamp.body.setSize(collisionSize, collisionSize);
+                    swamp.body.setOffset(offsetX, offsetY);
+                    swamp.refreshBody();
+                    
+                    // Отмечаем клетку как занятую
+                    occupiedCells[gy][gx] = true;
+                }
+            }
+        }
     }
 }

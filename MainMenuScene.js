@@ -9,7 +9,7 @@ class MainMenuScene extends Phaser.Scene {
         // Константы для кнопок
         this.BASE_BUTTON_WIDTH = 264;
         this.BASE_BUTTON_HEIGHT = 78;
-        this.BASE_BUTTON_SPACING = 15;
+        this.BASE_BUTTON_SPACING = 7;
     }
 
     preload() {
@@ -36,10 +36,10 @@ class MainMenuScene extends Phaser.Scene {
         this.background.setOrigin(0.5, 0.5);
         
         // Масштабируем фон так, чтобы безопасная зона 1024x1024 всегда была видна
-        const safeZoneSize = 1024;
+        const safeZoneSize = GAME_WIDTH; // Используем константу безопасной зоны
         const scaleX = gameWidth / safeZoneSize;
         const scaleY = gameHeight / safeZoneSize;
-        const scale = Math.min(scaleX, scaleY); // Используем минимальный масштаб
+        const scale = Math.min(scaleX, scaleY, 1); // Используем минимальный масштаб и не масштабируем выше 1
         this.background.setScale(scale);
 
         // --- Конфигурация кнопок меню ---
@@ -47,9 +47,9 @@ class MainMenuScene extends Phaser.Scene {
         const buttonHeight = this.BASE_BUTTON_HEIGHT * buttonScale;
         const buttonSpacing = this.BASE_BUTTON_SPACING * buttonScale;
         const shadowOffsetX = 0;
-        const shadowOffsetY = 5 * buttonScale; // Масштабируем и смещение тени
+        const shadowOffsetY = 0 * buttonScale; // Масштабируем и смещение тени
         const shadowColor = 0x2f1c00;
-        const shadowAlpha = 0.5;
+        const shadowAlpha = 0;
         const fadeInDuration = 200;
         const startDelay = 200;
 
@@ -65,7 +65,7 @@ class MainMenuScene extends Phaser.Scene {
         // --- Создаем кнопки меню ---
         buttonsData.forEach((buttonInfo, index) => {
             // Вычисляем позицию кнопки относительно центра экрана
-            const buttonY = centerY + index * (buttonHeight + buttonSpacing) - (gameHeight / 20);
+            const buttonY = centerY + index * (buttonHeight + buttonSpacing) - (gameHeight / 5);
             const container = this.add.container(centerX, buttonY);
             
             // 1. Создаем изображение для тени
@@ -131,6 +131,11 @@ class MainMenuScene extends Phaser.Scene {
 
         // Добавляем обработчик изменения размера после создания всех элементов
         this.scale.on('resize', this.handleResize, this);
+        
+        // Принудительно вызываем handleResize при создании сцены, чтобы гарантировать правильное масштабирование
+        this.handleResize();
+        // Дополнительный вызов handleResize с задержкой в 1 кадр для надежности
+        this.time.delayedCall(1, this.handleResize, [], this);
     }
 
     handleResize() {
@@ -171,10 +176,10 @@ class MainMenuScene extends Phaser.Scene {
         // Обновляем позицию и масштаб фона
         if (this.background) {
             this.background.setPosition(centerX, centerY);
-            const safeZoneSize = 1024;
+            const safeZoneSize = GAME_WIDTH; // Используем константу безопасной зоны
             const scaleX = newWidth / safeZoneSize;
             const scaleY = newHeight / safeZoneSize;
-            const scale = Math.min(scaleX, scaleY); // Используем минимальный масштаб
+            const scale = Math.min(scaleX, scaleY, 1); // Используем минимальный масштаб и не масштабируем выше 1
             this.background.setScale(scale);
         }
 
@@ -182,7 +187,7 @@ class MainMenuScene extends Phaser.Scene {
         const buttonHeight = this.BASE_BUTTON_HEIGHT * buttonScale;
         const buttonSpacing = this.BASE_BUTTON_SPACING * buttonScale;
         this.menuButtons.forEach((button, index) => {
-            const buttonY = centerY + index * (buttonHeight + buttonSpacing) - (newHeight / 20);
+            const buttonY = centerY + index * (buttonHeight + buttonSpacing) - (newHeight / 20) + 20;
             button.setPosition(centerX, buttonY);
         });
 
