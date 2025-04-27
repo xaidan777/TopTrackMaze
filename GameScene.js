@@ -744,7 +744,7 @@ class GameScene extends Phaser.Scene {
                     .setVisible(true);
             }
             if (this.ui) this.ui.playAgainButton.setVisible(true);
-            if (this.ui) this.ui.nextLevelButton.setVisible(false);
+            if (this.ui && this.ui.nextLevelButton) this.ui.nextLevelButton.setVisible(false);
         } else {
             if (this.ui) {
                 this.ui.winText.setText('LEVEL COMPLETE!')
@@ -762,7 +762,7 @@ class GameScene extends Phaser.Scene {
                     })
                     .setVisible(true);
             }
-            if (this.ui) this.ui.nextLevelButton.setVisible(true);
+            if (this.ui && this.ui.nextLevelButton) this.ui.nextLevelButton.setVisible(true);
             if (this.ui) this.ui.playAgainButton.setVisible(false);
         }
 
