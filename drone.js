@@ -2,7 +2,7 @@ class Drone extends Phaser.GameObjects.Sprite {
     constructor(scene, x, y) {
         super(scene, x, y, DRONE_KEY);
         scene.add.existing(this);
-        this.setDepth(5).setOrigin(0.5).setScale(0.5);
+        this.setDepth(5).setOrigin(0.5).setScale(0.6);
         this.shadow = null; // Инициализируем свойство для тени
     }
 

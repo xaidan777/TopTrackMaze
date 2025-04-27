@@ -14,6 +14,7 @@ class MainMenuScene extends Phaser.Scene {
 
     preload() {
         this.load.image('packshot', 'assets/MainBG.jpg?v=' + GAME_VERSION); // Замени на путь к твоему пэкшоту
+        this.load.image('RESUMEGAME', 'assets/RESUMEGAME.png?v=' + GAME_VERSION);
         this.load.image('STARTGAME', 'assets/STARTGAME.png?v=' + GAME_VERSION);
         this.load.image('HOW', 'assets/HOW.png?v=' + GAME_VERSION);
         this.load.image('CREATOR', 'assets/CREATOR.png?v=' + GAME_VERSION);
@@ -53,11 +54,25 @@ class MainMenuScene extends Phaser.Scene {
         const fadeInDuration = 200;
         const startDelay = 200;
 
+        // Проверяем сохраненный прогресс
+        const savedProgress = localStorage.getItem('gameProgress');
+        let currentLevel = 1;
+        if (savedProgress) {
+            const progress = JSON.parse(savedProgress);
+            currentLevel = progress.currentLevel || 1;
+        }
+
+        // Определяем, какие кнопки показывать
         const buttonsData = [
             { key: 'STARTGAME', action: 'startGame' },
             { key: 'HOW', action: 'showHowToPlay' },
             { key: 'CREATOR', action: 'openCreatorLink' }
         ];
+
+        // Добавляем кнопку RESUME только если уровень больше 1
+        if (currentLevel > 1) {
+            buttonsData.unshift({ key: 'RESUMEGAME', action: 'resumeGame' });
+        }
 
         // Очищаем массив кнопок перед созданием новых
         this.menuButtons = [];
@@ -242,11 +257,31 @@ class MainMenuScene extends Phaser.Scene {
         console.log(`Выполняется действие: ${action}`);
         switch (action) {
             case 'startGame':
+                // Очищаем сохраненный прогресс при начале новой игры
+                localStorage.removeItem('gameProgress');
+                console.log('Сохраненный прогресс очищен');
                 // Проверяем наличие сцены перед запуском
                 if (this.scene.get('GameScene')) {
                     this.scene.start('GameScene');
                 } else {
                      console.warn("Сцена 'GameScene' не найдена!");
+                }
+                break;
+            case 'resumeGame':
+                // Проверяем наличие сохраненного прогресса
+                const savedProgress = localStorage.getItem('gameProgress');
+                if (savedProgress) {
+                    if (this.scene.get('GameScene')) {
+                        this.scene.start('GameScene');
+                    } else {
+                        console.warn("Сцена 'GameScene' не найдена!");
+                    }
+                } else {
+                    console.log('Нет сохраненного прогресса');
+                    // Если нет сохраненного прогресса, начинаем новую игру
+                    if (this.scene.get('GameScene')) {
+                        this.scene.start('GameScene');
+                    }
                 }
                 break;
             case 'showHowToPlay':

@@ -9,6 +9,7 @@ class UI {
         this.restartLevelText = null;
         this.playAgainButton = null;
         this.restartButtonObject = null;
+        this.menuButtonObject = null;
         this.portalArrow = null;
         this.leftBorderSprite = null;
         this.rightBorderSprite = null;
@@ -47,7 +48,7 @@ class UI {
 
         // Создание текста топлива
         this.fuelText = this.scene.add.text(GAME_WIDTH / 2, 5, '', {
-            font: '20px Lilita One',
+            font: '24px Lilita One',
             fill: '#fffabd',
             stroke: '#375667',
             strokeThickness: 3,
@@ -83,6 +84,22 @@ class UI {
         });
         this.restartButtonObject.on('pointerout', () => {
             this.restartButtonObject.clearTint();
+        });
+
+        // Создание кнопки возврата в меню
+        this.menuButtonObject = this.scene.add.image(GAME_WIDTH - 50, 5, 'menu_b')
+            .setOrigin(1, 0).setDepth(22).setInteractive({ useHandCursor: true })
+            .setScale(0.8);
+        this.menuButtonObject.on('pointerdown', () => {
+            console.log("Menu button clicked!");
+            this.scene.saveGameProgress();
+            this.scene.scene.start('MainMenuScene');
+        });
+        this.menuButtonObject.on('pointerover', () => {
+            this.menuButtonObject.setTint(0xcccccc);
+        });
+        this.menuButtonObject.on('pointerout', () => {
+            this.menuButtonObject.clearTint();
         });
 
         // Создание текста победы
@@ -184,6 +201,7 @@ class UI {
             this.fuelText,
             this.playAgainButton,
             this.restartButtonObject,
+            this.menuButtonObject,
             this.winText,
             this.nextLevelButton,
             this.restartLevelText,
@@ -278,7 +296,11 @@ class UI {
         }
 
         if (this.restartButtonObject) {
-            this.restartButtonObject.setPosition(newWidth - 5, 0);
+            this.restartButtonObject.setPosition(newWidth - 50, 0);
+        }
+
+        if (this.menuButtonObject) {
+            this.menuButtonObject.setPosition(newWidth - 5, 5);
         }
 
         if (this.levelText) {

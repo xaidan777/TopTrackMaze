@@ -60,10 +60,22 @@ class GameScene extends Phaser.Scene {
         console.log("Starting New Game from Win screen...");
         this.registry.set('currentLevel', 1);
         this.registry.set('obstacleThreshold', INITIAL_OBSTACLE_THRESHOLD);
+        this.saveGameProgress(); // Сохраняем прогресс при выходе
 
         if (this.scene.isActive(this.scene.key)) {
             this.scene.start('MainMenuScene');
         }
+    }
+
+    saveGameProgress() {
+        const gameProgress = {
+            currentLevel: this.currentLevel,
+            // Не сохраняем obstacleThreshold, так как он всегда берется из LEVEL_SETTINGS
+            fuel: this.fuel,
+            nitroAvailable: this.car ? this.car.getData('nitroAvailable') : NITRO_AVAILABLE_BY_DEFAULT
+        };
+        localStorage.setItem('gameProgress', JSON.stringify(gameProgress));
+        console.log('Game progress saved:', gameProgress);
     }
 
     preload() {
@@ -84,6 +96,7 @@ class GameScene extends Phaser.Scene {
         this.load.image(ARC_GO_KEY, 'assets/arс_go.png?v=' + GAME_VERSION);
 
         this.load.image(RESTART_BUTTON_KEY, 'assets/restart.png?v=' + GAME_VERSION);
+        this.load.image('menu_b', 'assets/menu_b.png?v=' + GAME_VERSION);
         this.load.image(START_BUTTON_KEY, 'assets/STARTGAME.png?v=' + GAME_VERSION);
         this.load.image(NEXT_LEVEL_BUTTON_KEY, 'assets/NEXTLEVEL.png?v=' + GAME_VERSION);
         this.load.image(FUEL_PICKUP_KEY, 'assets/fuel.png?v=' + GAME_VERSION);
@@ -129,6 +142,9 @@ class GameScene extends Phaser.Scene {
     create() {
         console.log("Phaser version:", Phaser.VERSION);
 
+        // Загружаем сохраненный прогресс
+        this.loadGameProgress();
+
         if (this.dronesGroup) {
             this.dronesGroup.destroy(true); 
             this.dronesGroup = null;
@@ -155,14 +171,15 @@ class GameScene extends Phaser.Scene {
         this.movesHistory = [];
         this.currentLevel = this.registry.get('currentLevel') || 1;
         
+        // Всегда используем значение из LEVEL_SETTINGS
         const levelSettings = getLevelSettings(this.currentLevel);
-        this.currentObstacleThreshold = this.registry.get('obstacleThreshold') || levelSettings.threshold;
+        this.currentObstacleThreshold = levelSettings.threshold;
         
         if (this.registry.get('isLevelRestart')) {
             this.registry.remove('isLevelRestart');
             const initialLevelFuel = this.registry.get('initialLevelFuel');
             if (initialLevelFuel !== undefined) {
-                this.fuel = initialLevelFuel;
+                this.fuel = Math.max(initialLevelFuel, INITIAL_FUEL);
                 console.log(`Restarting level with initial fuel: ${this.fuel}`);
             } else {
                 this.fuel = INITIAL_FUEL;
@@ -170,7 +187,7 @@ class GameScene extends Phaser.Scene {
             }
         }
         else if (this.registry.get('fuelForNextLevel') !== undefined) {
-            this.fuel = this.registry.get('fuelForNextLevel');
+            this.fuel = Math.max(this.registry.get('fuelForNextLevel'), INITIAL_FUEL);
             this.registry.remove('fuelForNextLevel'); 
             
             this.registry.set('initialLevelFuel', this.fuel);
@@ -378,7 +395,7 @@ class GameScene extends Phaser.Scene {
                         this.occupiedCellsForSpawning[randomGridY][randomGridX] = true;
                     }
 
-                    const droneShadow = this.add.sprite(dx + 2, dy + SHADOW_OFFSET_Y, DRONE_KEY);
+                    const droneShadow = this.add.sprite(dx + 2, dy + 6 + SHADOW_OFFSET_Y, DRONE_KEY);
                     droneShadow.setScale(newDrone.scale);
                     droneShadow.setOrigin(newDrone.originX, newDrone.originY);
                     droneShadow.setTint(shadowColor);
@@ -995,7 +1012,7 @@ class GameScene extends Phaser.Scene {
         const nextLevel = this.currentLevel + 1;
         
         const nextLevelSettings = getLevelSettings(nextLevel);
-        const nextObstacleThreshold = nextLevelSettings.threshold;
+        // Не сохраняем obstacleThreshold в реестре, так как он всегда берется из LEVEL_SETTINGS
 
         this.input.off('pointerdown');
         this.input.off('pointermove');
@@ -1026,9 +1043,14 @@ class GameScene extends Phaser.Scene {
         const fuelToKeep = currentFuel > INITIAL_FUEL ? currentFuel : INITIAL_FUEL;
         this.registry.set('fuelForNextLevel', fuelToKeep);
 
+        // Обновляем текущий уровень и сохраняем прогресс
+        this.currentLevel = nextLevel;
         this.registry.set('currentLevel', nextLevel);
-        this.registry.set('obstacleThreshold', nextObstacleThreshold);
+        // Не сохраняем obstacleThreshold в реестре
         this.registry.set('isRestarting', true);
+        
+        // Сохраняем прогресс перед переходом на следующий уровень
+        this.saveGameProgress();
 
         this.isUIInteraction = false;
         this.levelStartBlockTime = this.time.now;
@@ -1391,10 +1413,10 @@ class GameScene extends Phaser.Scene {
                 const replayDrone = this.add.sprite(droneData.startX, droneData.startY, DRONE_KEY)
                     .setDepth(6) // Чуть выше основных объектов
                     .setOrigin(0.5)
-                    .setScale(0.5);
+                    .setScale(0.6);
                     
                 // Создаем тень реплей-дрона
-                const replayDroneShadow = this.add.sprite(droneData.startX + 5, droneData.startY + SHADOW_OFFSET_Y + 15, DRONE_KEY)
+                const replayDroneShadow = this.add.sprite(droneData.startX + 2, droneData.startY + SHADOW_OFFSET_Y + 15, DRONE_KEY)
                     .setScale(replayDrone.scale)
                     .setOrigin(replayDrone.originX, replayDrone.originY)
                     .setTint(replayShadowColor)
@@ -1865,5 +1887,37 @@ class GameScene extends Phaser.Scene {
         }
         
         this.tiresTrackRT.draw(this.tireTrackGraphics);
+    }
+
+    loadGameProgress() {
+        const savedProgress = localStorage.getItem('gameProgress');
+        if (savedProgress) {
+            const progress = JSON.parse(savedProgress);
+            this.currentLevel = progress.currentLevel;
+            // Не загружаем obstacleThreshold из сохранения
+            this.fuel = progress.fuel;
+            
+            // Сохраняем данные для следующего уровня
+            this.registry.set('currentLevel', this.currentLevel);
+            // Не сохраняем obstacleThreshold в реестре
+            this.registry.set('fuelForNextLevel', this.fuel);
+            this.registry.set('nitroForNextLevel', progress.nitroAvailable);
+            
+            console.log('Game progress loaded:', progress);
+        } else {
+            // Если нет сохраненного прогресса, устанавливаем значения по умолчанию
+            this.currentLevel = 1;
+            // Используем значение из LEVEL_SETTINGS
+            const levelSettings = getLevelSettings(1);
+            this.currentObstacleThreshold = levelSettings.threshold;
+            this.fuel = INITIAL_FUEL;
+            
+            this.registry.set('currentLevel', this.currentLevel);
+            // Не сохраняем obstacleThreshold в реестре
+            this.registry.set('fuelForNextLevel', this.fuel);
+            this.registry.set('nitroForNextLevel', NITRO_AVAILABLE_BY_DEFAULT);
+            
+            console.log('No saved progress found, using default values');
+        }
     }
 } 
