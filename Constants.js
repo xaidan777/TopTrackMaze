@@ -1,6 +1,6 @@
-const GAME_VERSION = '0.4.28'; // Версия игры для кэширования ресурсов
-const GAME_WIDTH = 1064;
-const GAME_HEIGHT = 1064;
+const GAME_VERSION = '0.4.27b'; // Версия игры для кэширования ресурсов
+const GAME_WIDTH = 1536;
+const GAME_HEIGHT = 1536;
 const GRID_CELL_SIZE = 32;
 
 // Соотношения сторон
@@ -143,21 +143,21 @@ const SWAMP_THRESHOLD_OFFSET = 0.3; //чем выше значение, тем �
 // --- Параметры дронов ---
 const DRONE_KEY               = 'drone';
 // DRONE_MAX_PER_LEVEL определяется в настройках уровней
-const DRONE_RANGE_CELLS       = 1.5;        // дальность рывка за ход
+const DRONE_RANGE_CELLS       = 2;        // дальность рывка за ход
 const DRONE_KILL_RADIUS_CELLS = 1.5;        // радиус перехвата
 
 // --- Параметры прогрессии ---
-const FUEL_COUNT_PER_LEVEL = 7;  // Количество топлива на уровне
+const FUEL_COUNT_PER_LEVEL = 10;  // Количество топлива на уровне
 const INITIAL_FUEL = 7;
 const MAX_FUEL = 15;
 const FUEL_CONSUMPTION_PER_MOVE = 1;
-const FUEL_GAIN_ON_PICKUP = 5;
+const FUEL_GAIN_ON_PICKUP = 7;
 const FUEL_LOW_THRESHOLD = 3;
 const FUEL_COLOR_NORMAL = '#ffffff';
 const FUEL_COLOR_LOW = '#df2a06';
 
 // --- Параметры NITRO ---
-const NITRO_COUNT_PER_LEVEL = 3;   // Количество нитро на уровне
+const NITRO_COUNT_PER_LEVEL = 5;   // Количество нитро на уровне
 const NITRO_AVAILABLE_BY_DEFAULT = false; // Нитро недоступно по умолчанию
 
 // --- Параметры эффектов ---
@@ -176,8 +176,8 @@ const CAMERA_ZOOM_SPEED_THRESHOLD = 1; // Скорость, при которо�
 const CAMERA_ZOOM_SPEED_MAX = 5; // Скорость, при которой достигается максимальное отдаление
 
 // --- Параметры скольжения на льду ---
-const SNOW_SKID_FACTOR = 0.50; // 50% сноса
-const SNOW_SKID_EXTRA_ROTATION_MULTIPLIER = 2.0; // Насколько сильно доп. вращение зависит от фактора сноса (1.0 = линейно)
+const SNOW_SKID_FACTOR = 0.40; // 50% сноса
+const SNOW_SKID_EXTRA_ROTATION_MULTIPLIER = 1.75; // Насколько сильно доп. вращение зависит от фактора сноса (1.0 = линейно)
 
 // --- Параметры препятствий и уровней ---
 const CUBE_SIZE_FACTOR           = 0.8;
@@ -210,21 +210,21 @@ const BIOME_SNOW = {
 const LEVEL_SETTINGS = {
     1: { biome: BIOME_DESERT, threshold: 0.7, drones: 0 },
     2: { biome: BIOME_DESERT, threshold: 0.65, drones: 0 },
-    3: { biome: BIOME_DESERT, threshold: 0.6, drones: 0 },
-    4: { biome: BIOME_GRASS, threshold: 0.6, drones: 0 },
-    5: { biome: BIOME_GRASS, threshold: 0.55, drones: 0 },
-    6: { biome: BIOME_GRASS, threshold: 0.5, drones: 0 },
-    7: { biome: BIOME_SNOW, threshold: 0.7, drones: 0 },
-    8: { biome: BIOME_SNOW, threshold: 0.65, drones: 0 },
-    9: { biome: BIOME_SNOW, threshold: 0.6, drones: 0 },
-    10: { biome: BIOME_DESERT, threshold: 0.6, drones: 1 },
-    11: { biome: BIOME_DESERT, threshold: 0.55, drones: 1 },
+    3: { biome: BIOME_DESERT, threshold: 0.6, drones: 1 },
+    4: { biome: BIOME_GRASS, threshold: 0.6, drones: 1 },
+    5: { biome: BIOME_GRASS, threshold: 0.55, drones: 1 },
+    6: { biome: BIOME_GRASS, threshold: 0.5, drones: 1 },
+    7: { biome: BIOME_SNOW, threshold: 0.7, drones: 1 },
+    8: { biome: BIOME_SNOW, threshold: 0.65, drones: 1 },
+    9: { biome: BIOME_SNOW, threshold: 0.6, drones: 1 },
+    10: { biome: BIOME_DESERT, threshold: 0.6, drones: 2 },
+    11: { biome: BIOME_DESERT, threshold: 0.55, drones: 2 },
     12: { biome: BIOME_DESERT, threshold: 0.5, drones: 2},
-    13: { biome: BIOME_GRASS, threshold: 0.6, drones: 1 },
-    14: { biome: BIOME_GRASS, threshold: 0.55, drones: 1 },
-    15: { biome: BIOME_GRASS, threshold: 0.5, drones: 1 },
-    16: { biome: BIOME_SNOW, threshold: 0.6, drones: 1 },
-    17: { biome: BIOME_SNOW, threshold: 0.55, drones: 1 },
+    13: { biome: BIOME_GRASS, threshold: 0.6, drones: 2 },
+    14: { biome: BIOME_GRASS, threshold: 0.55, drones: 2 },
+    15: { biome: BIOME_GRASS, threshold: 0.5, drones: 2 },
+    16: { biome: BIOME_SNOW, threshold: 0.6, drones: 2 },
+    17: { biome: BIOME_SNOW, threshold: 0.55, drones: 2 },
     18: { biome: BIOME_DESERT, threshold: 0.5, drones: 2 },
     19: { biome: BIOME_DESERT, threshold: 0.45, drones: 2 },
     20: { biome: BIOME_DESERT, threshold: 0.4, drones: 2},
@@ -232,9 +232,9 @@ const LEVEL_SETTINGS = {
     22: { biome: BIOME_GRASS, threshold: 0.45, drones: 2 },
     23: { biome: BIOME_GRASS, threshold: 0.4, drones: 2 },
     24: { biome: BIOME_SNOW, threshold: 0.5, drones: 2 },
-    25: { biome: BIOME_DESERT, threshold: 0.35, drones: 3 },
-    26: { biome: BIOME_GRASS, threshold: 0.35, drones: 3 },
-    27: { biome: BIOME_SNOW, threshold: 0.35, drones: 2},
+    25: { biome: BIOME_DESERT, threshold: 0.4, drones: 3 },
+    26: { biome: BIOME_GRASS, threshold: 0.4, drones: 3 },
+    27: { biome: BIOME_SNOW, threshold: 0.4, drones: 3},
 };
 
 // Для обратной совместимости старый формат
