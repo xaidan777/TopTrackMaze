@@ -87,6 +87,10 @@ class GameScene extends Phaser.Scene {
         this.load.image(GROUND_TEXTURE_G_KEY, 'assets/ground_texture_g.jpg?v=' + GAME_VERSION);
         this.load.image(GROUND_TEXTURE_S_KEY, 'assets/ground_texture_s.jpg?v=' + GAME_VERSION);
 
+        // Загружаем изображения для окна с советами
+        this.load.image('tips', 'assets/tips.png?v=' + GAME_VERSION);
+        this.load.image('ok_button', 'assets/ok_button.png?v=' + GAME_VERSION);
+
         this.load.image(BLOCK_D_KEY, 'assets/block_d.png?v=' + GAME_VERSION);
         this.load.image(BLOCK_G_KEY, 'assets/block_g.png?v=' + GAME_VERSION);
         this.load.image(BLOCK_S_KEY, 'assets/block_s.png?v=' + GAME_VERSION);
@@ -144,6 +148,46 @@ class GameScene extends Phaser.Scene {
 
         // Загружаем сохраненный прогресс
         this.loadGameProgress();
+
+        // Создаем окно с советами для первого уровня
+        if (this.currentLevel === 1) {
+            // Создаем окно с советами
+            const tipsWindow = this.add.image(GAME_WIDTH/2, GAME_HEIGHT/2, 'tips')
+                .setDepth(1000)
+                .setScale(0.66);
+
+            // Создаем кнопку OK
+            const okButton = this.add.image(GAME_WIDTH/2, GAME_HEIGHT/2 + 160, 'ok_button')
+                .setDepth(1001)
+                .setScale(0.8)
+                .setInteractive();
+
+            // Добавляем элементы в игнор игровой камеры
+            this.cameras.main.ignore(tipsWindow);
+            this.cameras.main.ignore(okButton);
+
+            // Добавляем обработчик нажатия на кнопку
+            okButton.on('pointerdown', () => {
+                tipsWindow.destroy();
+                okButton.destroy();
+            });
+
+            // Добавляем обработчик ресайза
+            const handleResize = () => {
+                tipsWindow.setPosition(this.scale.width/2, this.scale.height/2);
+                okButton.setPosition(this.scale.width/2, this.scale.height/2 + 160);
+            };
+
+            // Вызываем сразу для начальной позиции
+            handleResize();
+
+            // Подписываемся на событие ресайза
+            this.scale.on('resize', handleResize, this);
+
+            // Сохраняем ссылки на элементы для очистки
+            this.tipsWindow = tipsWindow;
+            this.okButton = okButton;
+        }
 
         if (this.dronesGroup) {
             this.dronesGroup.destroy(true); 
