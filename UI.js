@@ -346,8 +346,8 @@ class UI {
         const borderScale = 0.5;
         
         // Устанавливаем точку привязки в начало спрайтов
-        this.leftBorderSprite.setOrigin(1, 1.2);
-        this.rightBorderSprite.setOrigin(0, 1.2);
+        this.leftBorderSprite.setOrigin(1, 1.5);
+        this.rightBorderSprite.setOrigin(0, 1.5);
         
         // Обновляем позиции и углы рамок
         // Позиционируем от центра машины

@@ -365,11 +365,10 @@ class ArcController {
 
         let candidates = [];
 
-        if (ap.innerRadius >= 0 && ap.neutralRadius > ap.innerRadius) {
+        if (ap.innerRadius >= 0) {
             candidates.push({ zone: 'brake', radius: ap.innerRadius });
-            candidates.push({ zone: 'brake', radius: ap.neutralRadius });
         }
-        if (ap.neutralRadius >= 0 && ap.workingRadius > ap.neutralRadius) {
+        if (ap.workingRadius > 0) {
             candidates.push({ zone: 'accelerate', radius: ap.workingRadius });
         }
         if (ap.workingRadius >= 0 && ap.outerRadius > ap.workingRadius && nitroAvailable) {

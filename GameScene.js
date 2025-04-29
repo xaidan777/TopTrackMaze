@@ -146,6 +146,13 @@ class GameScene extends Phaser.Scene {
     create() {
         console.log("Phaser version:", Phaser.VERSION);
 
+        // Отладочный вывод для проверки значений констант цвета вспышек
+        console.log("Debug - Flash colors (hex):", {
+            FLASH_COLOR: '0x' + FLASH_COLOR.toString(16), 
+            WIN_FLASH_COLOR: '0x' + WIN_FLASH_COLOR.toString(16),
+            FUEL_FLASH_COLOR: '0x' + FUEL_FLASH_COLOR.toString(16)
+        });
+
         // Загружаем сохраненный прогресс
         this.loadGameProgress();
 
@@ -289,9 +296,11 @@ class GameScene extends Phaser.Scene {
         // --- Создаем RenderTexture для следов колес ---
         this.tiresTrackRT = this.add.renderTexture(0, 0, GAME_WIDTH, GAME_HEIGHT)
             .setOrigin(0, 0)
-            .setDepth(-15); 
+            .setDepth(-15)
+            .setBlendMode(Phaser.BlendModes.NORMAL); 
             
-        this.tireTrackGraphics = this.add.graphics();
+        this.tireTrackGraphics = this.add.graphics()
+            .setBlendMode(Phaser.BlendModes.NORMAL);
 
         // --- Группы объектов ---
         this.obstaclesGroup = this.physics.add.staticGroup();
@@ -576,11 +585,33 @@ class GameScene extends Phaser.Scene {
                 const arcCenterX = this.car.x + Math.cos(ap.orientationRad) * ap.neutralRadius;
                 const arcCenterY = this.car.y + Math.sin(ap.orientationRad) * ap.neutralRadius;
 
+                // Рассчитываем текущее смещение
                 const deltaX = pointer.worldX - this.pointerDownX;
                 const deltaY = pointer.worldY - this.pointerDownY;
+                
+                // Рассчитываем длину смещения
+                const currentOffset = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                
+                // Определяем максимально допустимое смещение
+                const maxOffset = Math.max(ap.outerRadius, GRID_CELL_SIZE * 3);
+                
+                // Если вышли за пределы
+                if (currentOffset > maxOffset) {
+                    // Нормализуем вектор смещения
+                    const normalizedDeltaX = deltaX / currentOffset;
+                    const normalizedDeltaY = deltaY / currentOffset;
+                    
+                    // Обновляем точку отсчета, сохраняя направление, но ограничивая длину
+                    this.pointerDownX = pointer.worldX - normalizedDeltaX * maxOffset;
+                    this.pointerDownY = pointer.worldY - normalizedDeltaY * maxOffset;
+                }
 
-                const virtualX = arcCenterX + deltaX;
-                const virtualY = arcCenterY + deltaY;
+                // Пересчитываем финальное смещение с учетом обновленной точки отсчета
+                const finalDeltaX = pointer.worldX - this.pointerDownX;
+                const finalDeltaY = pointer.worldY - this.pointerDownY;
+
+                const virtualX = arcCenterX + finalDeltaX;
+                const virtualY = arcCenterY + finalDeltaY;
 
                 this.arcController.handlePointerMove({
                     worldX: virtualX,
@@ -1031,8 +1062,38 @@ class GameScene extends Phaser.Scene {
             .setVisible(true);
 
         if (this.cameras.main) {
-            this.cameras.main.flash(FLASH_DURATION, FLASH_COLOR);
-            this.cameras.main.shake(SHAKE_DURATION, SHAKE_INTENSITY);
+            // Проверяем тип сообщения для использования соответствующего цвета и эффектов
+            if (message === 'OUT OF FUEL!') {
+                // Создаем свой собственный эффект вспышки вместо использования встроенного
+                const fuelFlashColorHex = 0xffa200;
+                console.log('Using custom fuel flash effect:', fuelFlashColorHex.toString(16));
+                
+                // Создаем прямоугольник, покрывающий весь экран
+                const flashRect = this.add.rectangle(
+                    this.cameras.main.width / 2,
+                    this.cameras.main.height / 2,
+                    this.cameras.main.width,
+                    this.cameras.main.height,
+                    fuelFlashColorHex,
+                    0.7 // Начальная прозрачность
+                ).setScrollFactor(0).setDepth(1000);
+                
+                // Добавляем в игнор UI камеры
+                if (this.uiCamera) this.uiCamera.ignore(flashRect);
+                
+                // Анимируем прозрачность для создания эффекта вспышки
+                this.tweens.add({
+                    targets: flashRect,
+                    alpha: 0,
+                    duration: 1000,
+                    ease: 'Power2',
+                    onComplete: () => flashRect.destroy()
+                });
+            } else {
+                // Для всех остальных ситуаций используем стандартный цвет и тряску
+                this.cameras.main.flash(FLASH_DURATION, FLASH_COLOR);
+                this.cameras.main.shake(SHAKE_DURATION, SHAKE_INTENSITY);
+            }
         }
 
         this.registry.set('isLevelRestart', true);
