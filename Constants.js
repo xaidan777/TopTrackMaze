@@ -1,4 +1,4 @@
-const GAME_VERSION = '0.4.27b'; // Версия игры для кэширования ресурсов
+const GAME_VERSION = '0.4.29'; // Версия игры для кэширования ресурсов
 const GAME_WIDTH = 1536;
 const GAME_HEIGHT = 1536;
 const GRID_CELL_SIZE = 32;
