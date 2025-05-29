@@ -3,13 +3,14 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>ARCFADE: Maze</title> <script src="https://cdn.jsdelivr.net/npm/simplex-noise@2.4.0/simplex-noise.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <title>Arcfade: Maze</title> 
+    <script src="libs/simplex-noise.js"></script>
+    <script src="libs/phaser.min.js"></script>
 
     <style>
         @font-face {
             font-family: 'Lilita One';
-            src: url('assets/fonts/Lilita One Regular.ttf') format('truetype');
+            src: url('assets/fonts/Lilita_One_Regular.ttf') format('truetype');
             font-weight: normal;
             font-style: normal;
         }
@@ -29,16 +30,20 @@
             user-select: none;
         }
         #phaser-game {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
             width: 100%;
             height: 100%;
             max-width: 100vw;
             max-height: 100vh;
-            aspect-ratio: 4/3;
             touch-action: none;
         }
         @media (max-aspect-ratio: 3/4) {
             #phaser-game {
-                aspect-ratio: 3/4;
+                width: 100%;
+                height: 100%;
             }
         }
         canvas {
@@ -116,7 +121,7 @@
 </head>
 <body>
     <div id="loading-screen">
-        <div class="loading-text">LOADING GAME</div>
+        <div class="loading-text" data-lang-ru="ЗАГРУЗКА ИГРЫ" data-lang-en="LOADING GAME">ЗАГРУЗКА ИГРЫ</div>
         <div class="loading-bar">
             <div class="loading-progress"></div>
         </div>
@@ -124,27 +129,43 @@
     <div id="phaser-game"></div>
 
     <script src="Constants.js"></script>
+    <script src="DustParticle.js"></script>
     <script src="UI.js"></script>
     <script src="ArcController.js"></script>
     <script src="drone.js"></script>
     <script src="levels.js"></script>
+    <script src="Lang.js"></script>
     <script src="MainMenuScene.js"></script>
     <script src="GameScene.js"></script>
     <script src="ConsoleCommands.js"></script>
+    <script src="soundManager.js"></script>
     <script src="main.js"></script>
     <script>
-        // Проверка первого запуска и принудительное обновление
-        const isFirstLoad = sessionStorage.getItem('pageLoaded') !== 'true';
-        if (isFirstLoad) {
-            // Устанавливаем флаг, чтобы не обновлялось постоянно
-            sessionStorage.setItem('pageLoaded', 'true');
-            // Добавляем небольшую задержку для обновления
-            setTimeout(() => {
-                window.location.reload();
-            }, 500);
+        // Функция для отображения текста на правильном языке
+        function updateLoadingScreenLanguage() {
+            // По умолчанию используется русский язык (ru)
+            let currentLang = 'ru';
+            
+            // Проверяем, сохранен ли язык в localStorage
+            if (localStorage.getItem('language')) {
+                currentLang = localStorage.getItem('language');
+            }
+            
+            // Обновляем текст на экране загрузки
+            const langElements = document.querySelectorAll('[data-lang-ru]');
+            langElements.forEach(element => {
+                if (currentLang === 'ru') {
+                    element.textContent = element.getAttribute('data-lang-ru');
+                } else if (currentLang === 'en') {
+                    element.textContent = element.getAttribute('data-lang-en');
+                }
+            });
         }
 
         window.addEventListener('load', () => {
+            // Применяем язык к экрану загрузки
+            updateLoadingScreenLanguage();
+            
             // Добавляем версию ко всем скриптам
             document.querySelectorAll('script[src]').forEach(script => {
                 script.src = script.src + '?v=' + GAME_VERSION;

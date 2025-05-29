@@ -13,6 +13,7 @@ class GameScene extends Phaser.Scene {
         this.snapCursor = null;
         this.arcController = null;
         this.debugMode = false;
+        this.soundManager = null;
 
         this.tiresTrackRT = null;
         this.tireTrackGraphics = null;
@@ -54,6 +55,26 @@ class GameScene extends Phaser.Scene {
 
         this.uiCamera = null;
         this.ui = null;
+        
+        this.dustParticlesGroup = null; // Группа для активных частиц пыли
+        this.replayDustParticlesGroup = null; // Группа для частиц пыли в реплее
+        this.dustSpawnCounter = 0; // Счетчик для интервального спавна пыли
+        
+        // Флаги для контроля коллизий с болотом
+        this.isInSwamp = false;
+        this.swampEffectAppliedThisTurn = false; // Был ли уже применен эффект болота в текущем ходу
+        this.swampTrackAlpha = TIRE_TRACK_ALPHA; // Устанавливаем начальное значение на стандартную прозрачность
+        this.isAccelerationBlockedBySwamp = false; // Новый флаг: блокировка ускорения и нитро
+        this.isNitroBlockedBySwamp = false; // Для логики движения
+
+        this.draggingFromEmptySpace = false;
+        this.pointerDownX = 0;
+        this.pointerDownY = 0;
+
+        // Защита от случайного клика виртуального джойстика
+        this.pendingJoystickActivation = false;
+        this.joystickActivationTimer = null;
+        this.pointerDownTime = 0;
     }
 
     startNewGame() {
@@ -80,6 +101,10 @@ class GameScene extends Phaser.Scene {
 
     preload() {
         console.log("Preloading GameScene assets...");
+        
+        // Инициализация менеджера звуков
+        this.soundManager = new SoundManager(this);
+        this.soundManager.preload();
 
         this.load.image(CAR_PLAYER_KEY, 'assets/car_player.png?v=' + GAME_VERSION);
         
@@ -88,8 +113,9 @@ class GameScene extends Phaser.Scene {
         this.load.image(GROUND_TEXTURE_S_KEY, 'assets/ground_texture_s.jpg?v=' + GAME_VERSION);
 
         // Загружаем изображения для окна с советами
-        this.load.image('tips', 'assets/tips.png?v=' + GAME_VERSION);
-        this.load.image('ok_button', 'assets/ok_button.png?v=' + GAME_VERSION);
+        this.load.image('button', 'assets/button.png?v=' + GAME_VERSION);
+        this.load.image('tip_1', 'assets/tip_1.jpg?v=' + GAME_VERSION);
+        this.load.image('fuel_tank', 'assets/fuel_tank.png?v=' + GAME_VERSION);
 
         this.load.image(BLOCK_D_KEY, 'assets/block_d.png?v=' + GAME_VERSION);
         this.load.image(BLOCK_G_KEY, 'assets/block_g.png?v=' + GAME_VERSION);
@@ -101,17 +127,28 @@ class GameScene extends Phaser.Scene {
 
         this.load.image(RESTART_BUTTON_KEY, 'assets/restart.png?v=' + GAME_VERSION);
         this.load.image('menu_b', 'assets/menu_b.png?v=' + GAME_VERSION);
-        this.load.image(START_BUTTON_KEY, 'assets/STARTGAME.png?v=' + GAME_VERSION);
-        this.load.image(NEXT_LEVEL_BUTTON_KEY, 'assets/NEXTLEVEL.png?v=' + GAME_VERSION);
+        
         this.load.image(FUEL_PICKUP_KEY, 'assets/fuel.png?v=' + GAME_VERSION);
         this.load.image(NITRO_PICKUP_KEY, 'assets/nitro.png?v=' + GAME_VERSION);
         this.load.image(PORTAL_KEY, 'assets/portal.png?v=' + GAME_VERSION);
         this.load.image('arrow', 'assets/arrow.png?v=' + GAME_VERSION);
         this.load.image(DRONE_KEY, 'assets/drone.png?v=' + GAME_VERSION); 
 
-        // Загрузка изображения болота
+        // Загрузка изображения болота и клея
         this.load.image(SWAMP_KEY, 'assets/swamp.png');
+        this.load.image('glue', 'assets/glue.png?v=' + GAME_VERSION);
         this.load.image('strike', 'assets/strike.png?v=' + GAME_VERSION);
+        
+        // Программно создаем текстуру для частицы пыли (белый круг)
+        // Это позволит нам легко менять ее цвет через tint
+        let dustParticleGraphics = this.make.graphics({x: 0, y: 0, add: false});
+        dustParticleGraphics.fillStyle(0xffffff, 1);
+        // Рисуем круг с диаметром 10px. Его радиус будет 5px.
+        // Мы будем масштабировать его от DUST_PARTICLE_START_RADIUS до DUST_PARTICLE_END_RADIUS.
+        dustParticleGraphics.fillCircle(5, 5, 5);
+        dustParticleGraphics.generateTexture(DUST_PARTICLE_TEXTURE_KEY, 10, 10);
+        dustParticleGraphics.destroy();
+        
         
         if (this.registry.get('isRestarting')) {
             console.log("GameScene restarting...");
@@ -146,6 +183,11 @@ class GameScene extends Phaser.Scene {
     create() {
         console.log("Phaser version:", Phaser.VERSION);
 
+        let shouldShowTipsOnNewLevel = true; // Flag to control tips window display
+
+        // Инициализация звуков
+        this.soundManager.create();
+
         // Отладочный вывод для проверки значений констант цвета вспышек
         console.log("Debug - Flash colors (hex):", {
             FLASH_COLOR: '0x' + FLASH_COLOR.toString(16), 
@@ -156,45 +198,7 @@ class GameScene extends Phaser.Scene {
         // Загружаем сохраненный прогресс
         this.loadGameProgress();
 
-        // Создаем окно с советами для первого уровня
-        if (this.currentLevel === 1) {
-            // Создаем окно с советами
-            const tipsWindow = this.add.image(GAME_WIDTH/2, GAME_HEIGHT/2, 'tips')
-                .setDepth(1000)
-                .setScale(0.66);
 
-            // Создаем кнопку OK
-            const okButton = this.add.image(GAME_WIDTH/2, GAME_HEIGHT/2 + 160, 'ok_button')
-                .setDepth(1001)
-                .setScale(0.8)
-                .setInteractive();
-
-            // Добавляем элементы в игнор игровой камеры
-            this.cameras.main.ignore(tipsWindow);
-            this.cameras.main.ignore(okButton);
-
-            // Добавляем обработчик нажатия на кнопку
-            okButton.on('pointerdown', () => {
-                tipsWindow.destroy();
-                okButton.destroy();
-            });
-
-            // Добавляем обработчик ресайза
-            const handleResize = () => {
-                tipsWindow.setPosition(this.scale.width/2, this.scale.height/2);
-                okButton.setPosition(this.scale.width/2, this.scale.height/2 + 160);
-            };
-
-            // Вызываем сразу для начальной позиции
-            handleResize();
-
-            // Подписываемся на событие ресайза
-            this.scale.on('resize', handleResize, this);
-
-            // Сохраняем ссылки на элементы для очистки
-            this.tipsWindow = tipsWindow;
-            this.okButton = okButton;
-        }
 
         if (this.dronesGroup) {
             this.dronesGroup.destroy(true); 
@@ -228,6 +232,7 @@ class GameScene extends Phaser.Scene {
         
         if (this.registry.get('isLevelRestart')) {
             this.registry.remove('isLevelRestart');
+            shouldShowTipsOnNewLevel = false; // Don't show tips if restarting the level
             const initialLevelFuel = this.registry.get('initialLevelFuel');
             if (initialLevelFuel !== undefined) {
                 this.fuel = Math.max(initialLevelFuel, INITIAL_FUEL);
@@ -257,6 +262,11 @@ class GameScene extends Phaser.Scene {
         this.draggingFromEmptySpace = false;
         this.pointerDownX = 0;
         this.pointerDownY = 0;
+
+        // Защита от случайного клика виртуального джойстика
+        this.pendingJoystickActivation = false;
+        this.joystickActivationTimer = null;
+        this.pointerDownTime = 0;
 
         console.log(`Creating scene for Level ${this.currentLevel}... Obstacle Threshold: ${this.currentObstacleThreshold.toFixed(2)}`);
 
@@ -310,6 +320,10 @@ class GameScene extends Phaser.Scene {
         this.nitroPickupGroup = this.physics.add.group();
         this.swampGroup = this.physics.add.staticGroup();
 
+        // --- Группа для частиц пыли ---
+        this.dustParticlesGroup = this.add.group();
+        this.replayDustParticlesGroup = this.add.group();
+
         // --- Генерация уровня ---
         this.createLevel(shadowColor);
 
@@ -327,7 +341,8 @@ class GameScene extends Phaser.Scene {
                 nextRedCooldown: undefined,
                 accelDisabled: false,
                 nextAccelDisabled: undefined,
-                nitroAvailable: initialNitroStatus !== undefined ? initialNitroStatus : NITRO_AVAILABLE_BY_DEFAULT
+                nitroAvailable: initialNitroStatus !== undefined ? initialNitroStatus : NITRO_AVAILABLE_BY_DEFAULT,
+                isNitroActiveThisTurn: false // ADDED: Initialize nitro state flag
             });
             console.log(`Restarting level with initial nitro status: ${this.car.getData('nitroAvailable')}`);
         } else if (savedNitroStatus !== undefined) {
@@ -352,7 +367,8 @@ class GameScene extends Phaser.Scene {
                 nextRedCooldown: undefined,
                 accelDisabled: false,
                 nextAccelDisabled: undefined,
-                nitroAvailable: NITRO_AVAILABLE_BY_DEFAULT
+                nitroAvailable: NITRO_AVAILABLE_BY_DEFAULT,
+                isNitroActiveThisTurn: false // ADDED: Initialize nitro state flag
             });
             
             this.registry.set('initialLevelNitroStatus', NITRO_AVAILABLE_BY_DEFAULT);
@@ -374,26 +390,35 @@ class GameScene extends Phaser.Scene {
         this.carShadow.setDepth(this.car.depth + SHADOW_DEPTH_OFFSET);
 
         // --- Спавн топлива ---
+        const allPickups = []; // Массив для хранения всех заспавненных пикапов
         for (let i = 0; i < FUEL_COUNT_PER_LEVEL; i++) {
             if (this.levelGenerator) {
-                this.levelGenerator.spawnFuelPickup(
+                const fuelPickup = this.levelGenerator.spawnFuelPickup(
                     this.occupiedCellsForSpawning, 
                     this.gridWidthForSpawning, 
                     this.gridHeightForSpawning,
-                    this.fuelPickupGroup
+                    this.fuelPickupGroup,
+                    allPickups // Передаем уже созданные пикапы
                 );
+                if (fuelPickup) {
+                    allPickups.push(fuelPickup);
+                }
             }
         }
 
         // --- Спавн нитро ---
         for (let i = 0; i < NITRO_COUNT_PER_LEVEL; i++) {
             if (this.levelGenerator) {
-                this.levelGenerator.spawnNitroPickup(
+                const nitroPickup = this.levelGenerator.spawnNitroPickup(
                     this.occupiedCellsForSpawning, 
                     this.gridWidthForSpawning, 
                     this.gridHeightForSpawning,
-                    this.nitroPickupGroup
+                    this.nitroPickupGroup,
+                    allPickups // Передаем все уже созданные пикапы (включая топливо)
                 );
+                if (nitroPickup) {
+                    allPickups.push(nitroPickup);
+                }
             }
         }
 
@@ -406,11 +431,34 @@ class GameScene extends Phaser.Scene {
         const droneSettings = getLevelSettings(this.currentLevel);
         const maxDronesForLevel = droneSettings.drones || 0;
         const maxDroneSpawnAttempts = maxDronesForLevel * 20;
+        const attemptPerDrone = 20; // Попыток для одного дрона
 
         while (dronesSpawned < maxDronesForLevel && droneSpawnAttempts < maxDroneSpawnAttempts) {
             droneSpawnAttempts++;
-            const randomGridX = Phaser.Math.Between(1, this.gridWidthForSpawning - 2); 
-            const randomGridY = Phaser.Math.Between(1, this.gridHeightForSpawning - 2);
+            
+            // Проверяем, много ли попыток на один дрон уже сделано
+            const isEmergencySpawn = (droneSpawnAttempts % attemptPerDrone === 0);
+            
+            let randomGridX, randomGridY;
+            
+            if (isEmergencySpawn && this.cube && this.cube.active) {
+                // Принудительный спавн в зеркальных координатах от портала
+                const portalGridX = Math.floor(this.cube.x / GRID_CELL_SIZE);
+                const portalGridY = Math.floor(this.cube.y / GRID_CELL_SIZE);
+                
+                const centerGridX = Math.floor(this.gridWidthForSpawning / 2);
+                const centerGridY = Math.floor(this.gridHeightForSpawning / 2);
+                
+                // Зеркальные координаты (противоположная сторона от центра)
+                randomGridX = Math.min(Math.max(1, 2 * centerGridX - portalGridX), this.gridWidthForSpawning - 2);
+                randomGridY = Math.min(Math.max(1, 2 * centerGridY - portalGridY), this.gridHeightForSpawning - 2);
+                
+                console.log(`Emergency drone spawn - portal at (${portalGridX}, ${portalGridY}), mirror at (${randomGridX}, ${randomGridY})`);
+            } else {
+                // Обычный случайный спавн
+                randomGridX = Phaser.Math.Between(1, this.gridWidthForSpawning - 2); 
+                randomGridY = Phaser.Math.Between(1, this.gridHeightForSpawning - 2);
+            }
 
             if (
                 randomGridY >= 0 && randomGridY < this.gridHeightForSpawning &&
@@ -433,20 +481,12 @@ class GameScene extends Phaser.Scene {
                     portalCheckPassed = distFromPortal > minSpawnDistFromPortal;
                 }
 
-                let cellIsFree = true;
-                if (this.occupiedCellsForSpawning && this.occupiedCellsForSpawning[randomGridY] && this.occupiedCellsForSpawning[randomGridY][randomGridX]) {
-                    cellIsFree = !this.occupiedCellsForSpawning[randomGridY][randomGridX];
-                }
-
-                if (distFromStart > minSpawnDistFromStart && distFromStart <= maxSpawnDistFromStart && portalCheckPassed && cellIsFree) {
+                // При принудительном спавне игнорируем проверки расстояния
+                if (isEmergencySpawn || (distFromStart > minSpawnDistFromStart && distFromStart <= maxSpawnDistFromStart && portalCheckPassed)) {
                     const dx = randomGridX * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
                     const dy = randomGridY * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
                     const newDrone = new Drone(this, dx, dy); 
                     this.dronesGroup.add(newDrone);
-
-                    if (this.occupiedCellsForSpawning && this.occupiedCellsForSpawning[randomGridY]) {
-                        this.occupiedCellsForSpawning[randomGridY][randomGridX] = true;
-                    }
 
                     const droneShadow = this.add.sprite(dx + 2, dy + 6 + SHADOW_OFFSET_Y, DRONE_KEY);
                     droneShadow.setScale(newDrone.scale);
@@ -458,7 +498,11 @@ class GameScene extends Phaser.Scene {
                     newDrone.shadow = droneShadow; 
 
                     dronesSpawned++;
-                    console.log(`Drone spawned at grid (${randomGridX}, ${randomGridY}), DistStart: ${distFromStart.toFixed(1)}, PortalCheck: ${portalCheckPassed}`);
+                    if (isEmergencySpawn) {
+                        console.log(`Emergency drone spawned at grid (${randomGridX}, ${randomGridY})`);
+                    } else {
+                        console.log(`Drone spawned at grid (${randomGridX}, ${randomGridY}), DistStart: ${distFromStart.toFixed(1)}, PortalCheck: ${portalCheckPassed}`);
+                    }
                 }
             }
         }
@@ -492,6 +536,11 @@ class GameScene extends Phaser.Scene {
         this.ui = new UI(this);
         this.ui.create();
 
+        // Показываем окно с советами после инициализации UI
+        if (this.ui && shouldShowTipsOnNewLevel && this.ui.showTipsWindow) { // Show tips only on new level load, not on restart
+            this.ui.showTipsWindow();
+        }
+
         // --- Настройка физики и столкновений ---
         this.physics.add.overlap(this.car, this.obstaclesGroup, this.handleCollision, null, this);
         this.physics.add.overlap(this.car, this.collectibleGroup, this.handleCollectCube, null, this);
@@ -503,6 +552,11 @@ class GameScene extends Phaser.Scene {
         // 1) Pointer Down
         this.input.on('pointerdown', (pointer) => {
             if (pointer.button !== 0) return;
+
+            if (this.ui && this.ui.isTipsWindowVisible && this.ui.isTipsWindowVisible()) {
+                console.log("Tips window is visible, ignoring game click.");
+                return;
+            }
             
             const hitUI = [
                 this.ui.nextLevelButton,
@@ -536,29 +590,71 @@ class GameScene extends Phaser.Scene {
 
             const directArcZone = this.arcController.getArcZoneForPoint(pointerX, pointerY);
             const isClickNearArc = this.arcController.isPointNearArc(pointerX, pointerY, VIRTUAL_JOYSTICK_BLOCK_RADIUS);
+            // ADDED: Check distance from car
+            let isClickNearCar = false;
+            if (this.car && typeof this.car.x === 'number' && typeof this.car.y === 'number') { // Ensure car exists and has coords
+                 const distanceToCar = Phaser.Math.Distance.Between(pointerX, pointerY, this.car.x, this.car.y);
+                 isClickNearCar = distanceToCar < VIRTUAL_JOYSTICK_BLOCK_RADIUS;
+            }
 
-            if (directArcZone === null && !isClickNearArc) {
-                console.log("PointerDown: Activating virtual joystick (click far from arc).");
-                this.draggingFromEmptySpace = true;
+            if (directArcZone === null && !isClickNearArc && !isClickNearCar) { // MODIFIED condition
+                console.log("PointerDown: Потенциальная активация виртуального джойстика (клик далеко от арки и машины).");
+                
+                // Сохраняем данные для потенциальной активации
+                this.pendingJoystickActivation = true;
+                this.pointerDownTime = this.time.now;
                 this.pointerDownX = pointerX;
                 this.pointerDownY = pointerY;
-
-                const ap = this.arcController?.arcParams;
-                if (ap) {
-                    const neutralX = this.car.x + Math.cos(ap.orientationRad) * ap.neutralRadius;
-                    const neutralY = this.car.y + Math.sin(ap.orientationRad) * ap.neutralRadius;
-
-                    this.arcController.handlePointerMove({
-                        worldX: neutralX, 
-                        worldY: neutralY, 
-                        isDown: true      
-                    });
-                } else {
-                    this.arcController.handlePointerMove({ worldX: pointerX, worldY: pointerY, isDown: true });
+                
+                // Очищаем предыдущий таймер, если он был
+                if (this.joystickActivationTimer) {
+                    this.joystickActivationTimer.destroy();
+                    this.joystickActivationTimer = null;
                 }
+                
+                // Запускаем таймер активации
+                this.joystickActivationTimer = this.time.delayedCall(VIRTUAL_JOYSTICK_ACTIVATION_DELAY, () => {
+                    // Проверяем, что палец все еще нажат и мы находимся в режиме ожидания активации
+                    if (this.pendingJoystickActivation && pointer.isDown) {
+                        console.log("PointerDown: Активация виртуального джойстика после задержки.");
+                        this.draggingFromEmptySpace = true;
+                        this.pendingJoystickActivation = false;
+                        
+                        const ap = this.arcController?.arcParams;
+                        if (ap) {
+                            const neutralX = this.car.x + Math.cos(ap.orientationRad) * ap.neutralRadius;
+                            const neutralY = this.car.y + Math.sin(ap.orientationRad) * ap.neutralRadius;
+
+                            this.arcController.handlePointerMove({
+                                worldX: neutralX, 
+                                worldY: neutralY, 
+                                isDown: true      
+                            });
+                        } else {
+                            this.arcController.handlePointerMove({ worldX: pointerX, worldY: pointerY, isDown: true });
+                        }
+                    }
+                }, [], this);
 
             } else {
-                console.log("PointerDown: Click was on or near the arc. Virtual joystick blocked.");
+                // UPDATED: Console log message for clarity
+                let reason = "on or near the arc/car"; // Default or fallback reason
+                if (directArcZone !== null) {
+                    reason = "on a direct arc zone";
+                } else if (isClickNearArc) { // Implies directArcZone is null
+                    reason = "near the control arc";
+                } else if (isClickNearCar) { // Implies directArcZone is null and isClickNearArc is false
+                    reason = "near the car";
+                }
+                console.log(`PointerDown: Click was ${reason}. Virtual joystick blocked.`); // MODIFIED log
+                
+                // Очищаем любые ожидающие активации джойстика
+                this.pendingJoystickActivation = false;
+                if (this.joystickActivationTimer) {
+                    this.joystickActivationTimer.destroy();
+                    this.joystickActivationTimer = null;
+                }
+                
                 this.draggingFromEmptySpace = false;
                 this.arcController.handlePointerMove(pointer);
             }
@@ -619,6 +715,10 @@ class GameScene extends Phaser.Scene {
                     isDown: pointer.isDown
                 });
 
+            } else if (this.pendingJoystickActivation && pointer.isDown) {
+                // Джойстик еще не активирован, но палец нажат - не делаем ничего
+                // Ждем завершения задержки активации
+                return;
             } else {
                 this.arcController.handlePointerMove(pointer);
             }
@@ -629,6 +729,12 @@ class GameScene extends Phaser.Scene {
         // 3) Pointer Up
         this.input.on('pointerup', (pointer) => {
             if (pointer.button !== 0) return;
+
+            if (this.ui && this.ui.isTipsWindowVisible && this.ui.isTipsWindowVisible()) {
+                console.log("Tips window is visible, ignoring game click.");
+                return;
+            }
+
             if (this.isMoving || this.levelComplete || this.gameOver || !this.car || !this.arcController || this.isUIInteraction) {
                 return;
             }
@@ -639,6 +745,21 @@ class GameScene extends Phaser.Scene {
 
             if (this.fuel <= 0) {
                 this.handleOutOfFuel();
+                return;
+            }
+
+            // Проверяем, был ли джойстик в режиме ожидания активации
+            if (this.pendingJoystickActivation) {
+                console.log("PointerUp: Отмена активации виртуального джойстика (палец отпущен до истечения задержки).");
+                this.pendingJoystickActivation = false;
+                
+                // Очищаем таймер активации
+                if (this.joystickActivationTimer) {
+                    this.joystickActivationTimer.destroy();
+                    this.joystickActivationTimer = null;
+                }
+                
+                // Обрабатываем как обычный клик в пустом пространстве
                 return;
             }
 
@@ -661,6 +782,7 @@ class GameScene extends Phaser.Scene {
                     worldX: virtualX,
                     worldY: virtualY
                 });
+                // console.log("[PointerUp-Drag] ArcController result.moveData:", result ? result.moveData : 'No result'); // DEBUG LOG REMOVED
 
                 if (result && result.moveData) {
                     const moveDuration = result.moveData.moveTime || TURN_DURATION;
@@ -675,6 +797,11 @@ class GameScene extends Phaser.Scene {
                     this.updateArcBorders(false);
 
                     this.movesHistory.push(result.moveData);
+                    if (result.moveData.isNitroUsed) {
+                        this.car.setData('isNitroActiveThisTurn', true);
+                    } else {
+                        this.car.setData('isNitroActiveThisTurn', false);
+                    }
                     console.log("GameScene: Move initiated via controller (drag from empty).");
                 } else {
                     console.log("GameScene: No move from empty-space drag.");
@@ -682,6 +809,7 @@ class GameScene extends Phaser.Scene {
 
             } else {
                 const result = this.arcController.handleSceneClick(pointer);
+                // console.log("[PointerUp] ArcController result.moveData:", result ? result.moveData : 'No result'); // DEBUG LOG REMOVED
                 
                 if (result && result.moveData) {
                     const moveDuration = result.moveData.moveTime || TURN_DURATION;
@@ -696,6 +824,11 @@ class GameScene extends Phaser.Scene {
                     this.updateArcBorders(false);
 
                     this.movesHistory.push(result.moveData);
+                    if (result.moveData.isNitroUsed) {
+                        this.car.setData('isNitroActiveThisTurn', true);
+                    } else {
+                        this.car.setData('isNitroActiveThisTurn', false);
+                    }
                     console.log("GameScene: Move initiated via controller.");
                 } else {
                     console.log("GameScene: Click did not initiate a move via controller.");
@@ -767,7 +900,8 @@ class GameScene extends Phaser.Scene {
             currentObstacleThreshold: this.currentObstacleThreshold,
             obstacleAssetKey: obstacleKey, 
             shadowColor: shadowColor,
-            isBiomeGrass: this.currentBiome === BIOME_GRASS
+            isBiomeGrass: this.currentBiome === BIOME_GRASS,
+            currentLevel: this.currentLevel // Передаем текущий уровень
         });
 
         if (this.swampGroup && this.swampGroup.getChildren().length > 0) {
@@ -789,7 +923,10 @@ class GameScene extends Phaser.Scene {
         if (!cube || !cube.active || this.levelComplete || this.gameOver) return;
         console.log(`Cube collected! Level ${this.currentLevel} Complete!`);
         this.levelComplete = true;
-
+        
+        // Воспроизведение звука победы
+        this.soundManager.playWin();
+        
         // Останавливаем анимацию куба, но НЕ уничтожаем его
         this.tweens.killTweensOf(cube);
         
@@ -811,51 +948,23 @@ class GameScene extends Phaser.Scene {
         if (this.car?.body) this.car.body.enable = false;
 
         if (this.arcController) this.arcController.clearVisuals();
-        this.updateArcBorders(false); // Скрываем рамки арки при завершении уровня
+        this.updateArcBorders(false);
+
+        // Очищаем состояние виртуального джойстика
+        this.pendingJoystickActivation = false;
+        this.draggingFromEmptySpace = false;
+        if (this.joystickActivationTimer) {
+            this.joystickActivationTimer.destroy();
+            this.joystickActivationTimer = null;
+        }
 
         this.input.off('pointerdown');
         this.input.off('pointermove');
         this.input.keyboard.enabled = false;
 
-        if (this.ui) this.ui.winText.setVisible(true);
-        if (this.currentLevel >= TOTAL_LEVELS) {
-            if (this.ui) {
-                this.ui.winText.setText('YOU WIN!')
-                    .setStyle({ 
-                        font: '36px Lilita One', 
-                        fill: '#fffabd', 
-                        stroke: '#375667', 
-                        strokeThickness: 3,
-                        shadow: {
-                            offsetX: 2,
-                            offsetY: 4,
-                            color: '#375667',
-                            fill: true
-                        }
-                    })
-                    .setVisible(true);
-            }
-            if (this.ui) this.ui.playAgainButton.setVisible(true);
-            if (this.ui && this.ui.nextLevelButton) this.ui.nextLevelButton.setVisible(false);
-        } else {
-            if (this.ui) {
-                this.ui.winText.setText('LEVEL COMPLETE!')
-                    .setStyle({ 
-                        font: '34px Lilita One', 
-                        fill: '#fffabd', 
-                        stroke: '#375667', 
-                        strokeThickness: 3,
-                        shadow: {
-                            offsetX: 2,
-                            offsetY: 4,
-                            color: '#375667',
-                            fill: true
-                        }
-                    })
-                    .setVisible(true);
-            }
-            if (this.ui && this.ui.nextLevelButton) this.ui.nextLevelButton.setVisible(true);
-            if (this.ui) this.ui.playAgainButton.setVisible(false);
+        // Показываем экран завершения уровня через UI
+        if (this.ui) {
+            this.ui.showLevelComplete();
         }
 
         this.startReplay();
@@ -866,6 +975,9 @@ class GameScene extends Phaser.Scene {
     handleCollectFuelPickup(car, pickup) {
         if (!pickup || !pickup.active || this.levelComplete || this.gameOver) return;
         console.log("Collected fuel pickup!");
+        
+        // Воспроизведение звука подбора топлива
+        this.soundManager.playFuel();
 
         const gridX = Math.floor(pickup.x / GRID_CELL_SIZE);
         const gridY = Math.floor(pickup.y / GRID_CELL_SIZE);
@@ -876,18 +988,6 @@ class GameScene extends Phaser.Scene {
         ) {
             this.occupiedCellsForSpawning[gridY][gridX] = false;
         }
-
-        // Создаем эффект вспышки под машиной
-        const flash = this.add.circle(this.car.x, this.car.y, GRID_CELL_SIZE * 0.6, 0xffa200, 0.7);
-        this.uiCamera.ignore(flash);
-        this.tweens.add({
-            targets: flash,
-            scale: 2,
-            alpha: 0,
-            duration: 500,
-            ease: 'Power2',
-            onComplete: () => flash.destroy()
-        });
 
         this.tweens.killTweensOf(pickup);
         pickup.destroy();
@@ -896,56 +996,18 @@ class GameScene extends Phaser.Scene {
         this.updateFuelDisplay();
         this.updateInfoText();
 
-        // Создаем текст с количеством полученного топлива
-        const fuelText = this.add.text(
-            this.car.x, 
-            this.car.y - 50, 
-            `+${FUEL_GAIN_ON_PICKUP}`, 
-            { 
-                fontFamily: 'Lilita One', 
-                fontSize: 20, 
-                color: '#fffabd', 
-                stroke: '#b15e38', 
-                strokeThickness: 4,
-                shadow: {
-                    offsetX: 2,
-                    offsetY: 4,
-                    color: '#b15e38',
-                    fill: true
-                }
-            }
-        ).setOrigin(0.5, 0.5).setDepth(100);
-
-        // Создаем иконку топлива
-        const fuelIcon = this.add.image(
-            this.car.x + 22,
-            this.car.y - 50,
-            FUEL_PICKUP_KEY
-        ).setScale(0.75) 
-         .setOrigin(0.5, 0.5)
-         .setDepth(100);
-
-        // Добавляем в игнор UI камеры
-        this.uiCamera.ignore(fuelText);
-        this.uiCamera.ignore(fuelIcon);
-
-        // Анимация для текста и иконки
-        this.tweens.add({
-            targets: [fuelText, fuelIcon],
-            y: '-=30',
-            alpha: 0,
-            duration: 1500,
-            ease: 'Power2',
-            onComplete: () => {
-                fuelText.destroy();
-                fuelIcon.destroy();
-            }
-        });
+        // Показываем эффект через UI
+        if (this.ui) {
+            this.ui.showFuelPickupEffect(FUEL_GAIN_ON_PICKUP, { x: this.car.x, y: this.car.y });
+        }
     }
 
     handleCollectNitroPickup(car, pickup) {
         if (!pickup || !pickup.active || this.levelComplete || this.gameOver) return;
         console.log("Collected nitro pickup!");
+        
+        // Воспроизведение звука подбора нитро
+        this.soundManager.playNitro();
 
         const gridX = Math.floor(pickup.x / GRID_CELL_SIZE);
         const gridY = Math.floor(pickup.y / GRID_CELL_SIZE);
@@ -956,18 +1018,6 @@ class GameScene extends Phaser.Scene {
         ) {
             this.occupiedCellsForSpawning[gridY][gridX] = false;
         }
-
-        // Создаем временный эффект вспышки на месте подбора
-        const flash = this.add.circle(pickup.x, pickup.y, GRID_CELL_SIZE * 0.6, COLOR_NITRO, 0.7);
-        this.uiCamera.ignore(flash);
-        this.tweens.add({
-            targets: flash,
-            scale: 2,
-            alpha: 0,
-            duration: 500,
-            ease: 'Power2',
-            onComplete: () => flash.destroy()
-        });
         
         this.tweens.killTweensOf(pickup);
         pickup.destroy();
@@ -988,35 +1038,10 @@ class GameScene extends Phaser.Scene {
                     this.car.getData('nitroAvailable'),
                     "Next status:", this.car.getData('nextNitroAvailable'));
         
-        const nitroText = this.add.text(
-            this.car.x, 
-            this.car.y - 50, 
-            "NITRO READY!", 
-            { 
-                fontFamily: 'Lilita One', 
-                fontSize: 20, 
-                color: '#00ffff', 
-                stroke: '#375667', 
-                strokeThickness: 4,
-                shadow: {
-                    offsetX: 2,
-                    offsetY: 4,
-                    color: '#375667',
-                    fill: true
-                }
-            }
-        ).setOrigin(0.5, 0.5).setDepth(100);
-        
-        this.uiCamera.ignore(nitroText);
-        
-        this.tweens.add({
-            targets: nitroText,
-            y: nitroText.y - 30,
-            alpha: 0,
-            duration: 1500,
-            ease: 'Power2',
-            onComplete: () => nitroText.destroy()
-        });
+        // Показываем эффект через UI
+        if (this.ui) {
+            this.ui.showNitroPickupEffect({ x: this.car.x, y: this.car.y });
+        }
         
         this.updateInfoText();
         
@@ -1031,6 +1056,10 @@ class GameScene extends Phaser.Scene {
         this.isMoving = false;
 
         console.log("GAME OVER:", message);
+        
+        // Останавливаем звук двигателя при проигрыше
+        this.soundManager.stopEngine();
+        
         if (this.car) {
             this.tweens.killAll();
             if (this.car.body) {
@@ -1042,58 +1071,21 @@ class GameScene extends Phaser.Scene {
 
         if (this.arcController) this.arcController.clearVisuals();
 
+        // Очищаем состояние виртуального джойстика
+        this.pendingJoystickActivation = false;
+        this.draggingFromEmptySpace = false;
+        if (this.joystickActivationTimer) {
+            this.joystickActivationTimer.destroy();
+            this.joystickActivationTimer = null;
+        }
+
         this.input.off('pointerdown');
         this.input.off('pointermove');
         this.input.keyboard.enabled = false;
 
-        if (this.ui) this.ui.restartLevelText.setText(message)
-            .setStyle({ 
-                font: '40px Lilita One', 
-                fill: '#fffabd', 
-                stroke: '#375667', 
-                strokeThickness: 3,
-                shadow: {
-                    offsetX: 2,
-                    offsetY: 4,
-                    color: '#375667',
-                    fill: true
-                }
-            })
-            .setVisible(true);
-
-        if (this.cameras.main) {
-            // Проверяем тип сообщения для использования соответствующего цвета и эффектов
-            if (message === 'OUT OF FUEL!') {
-                // Создаем свой собственный эффект вспышки вместо использования встроенного
-                const fuelFlashColorHex = 0xffa200;
-                console.log('Using custom fuel flash effect:', fuelFlashColorHex.toString(16));
-                
-                // Создаем прямоугольник, покрывающий весь экран
-                const flashRect = this.add.rectangle(
-                    this.cameras.main.width / 2,
-                    this.cameras.main.height / 2,
-                    this.cameras.main.width,
-                    this.cameras.main.height,
-                    fuelFlashColorHex,
-                    0.7 // Начальная прозрачность
-                ).setScrollFactor(0).setDepth(1000);
-                
-                // Добавляем в игнор UI камеры
-                if (this.uiCamera) this.uiCamera.ignore(flashRect);
-                
-                // Анимируем прозрачность для создания эффекта вспышки
-                this.tweens.add({
-                    targets: flashRect,
-                    alpha: 0,
-                    duration: 1000,
-                    ease: 'Power2',
-                    onComplete: () => flashRect.destroy()
-                });
-            } else {
-                // Для всех остальных ситуаций используем стандартный цвет и тряску
-                this.cameras.main.flash(FLASH_DURATION, FLASH_COLOR);
-                this.cameras.main.shake(SHAKE_DURATION, SHAKE_INTENSITY);
-            }
+        // Показываем экран проигрыша через UI
+        if (this.ui) {
+            this.ui.showGameOver(message);
         }
 
         this.registry.set('isLevelRestart', true);
@@ -1106,6 +1098,11 @@ class GameScene extends Phaser.Scene {
     handleOutOfFuel() {
         if (this.gameOver || this.levelComplete) return;
         console.log("Fuel depleted!");
+        // Останавливаем звук двигателя немедленно
+        this.soundManager.stopEngine(true);
+        this.soundManager.stopReplayEngine(true);
+        // Воспроизводим звук окончания топлива
+        this.soundManager.playOut();
         this.triggerGameOver(`OUT OF FUEL!`);
     }
 
@@ -1114,6 +1111,15 @@ class GameScene extends Phaser.Scene {
         if (this.ui) this.ui.nextLevelButton.disableInteractive();
 
         console.log("Starting next level...");
+        
+        // Останавливаем все звуки
+        this.soundManager.stopEngine(true);
+        this.soundManager.stopReplayEngine(true);
+        this.soundManager.sounds.crash.stop();
+        this.soundManager.sounds.fuel.stop();
+        this.soundManager.sounds.nitro.stop();
+        this.soundManager.sounds.win.stop();
+        
         const nextLevel = this.currentLevel + 1;
         
         const nextLevelSettings = getLevelSettings(nextLevel);
@@ -1123,6 +1129,14 @@ class GameScene extends Phaser.Scene {
         this.input.off('pointermove');
         this.input.off('pointerup');
         this.input.keyboard.enabled = false;
+        
+        // Очищаем состояние виртуального джойстика
+        this.pendingJoystickActivation = false;
+        this.draggingFromEmptySpace = false;
+        if (this.joystickActivationTimer) {
+            this.joystickActivationTimer.destroy();
+            this.joystickActivationTimer = null;
+        }
         
         if (this.arcController) {
             this.arcController.clearVisuals();
@@ -1170,8 +1184,13 @@ class GameScene extends Phaser.Scene {
         if (this.gameOver || this.levelComplete) {
             if (this.carShadow?.visible) this.carShadow.setVisible(false);
             if (this.arcController) this.arcController.clearVisuals();
-            if (this.dronesGroup) this.dronesGroup.setVisible(false);
-            if (this.droneShadowsGroup) this.droneShadowsGroup.setVisible(false);
+            
+            // Скрываем дронов только при levelComplete, но не при gameOver
+            if (this.levelComplete) {
+                if (this.dronesGroup) this.dronesGroup.setVisible(false);
+                if (this.droneShadowsGroup) this.droneShadowsGroup.setVisible(false);
+            }
+            
             // Добавляем скрытие границ арки
             if (this.ui) this.ui.leftBorderSprite.setVisible(false);
             if (this.ui) this.ui.rightBorderSprite.setVisible(false);
@@ -1220,6 +1239,15 @@ class GameScene extends Phaser.Scene {
 
         if (this.isMoving && this.car?.active && this.tiresTrackRT) {
             this.drawTireTracks();
+            
+            // Логика интервального спавна пыли
+            this.dustSpawnCounter++;
+            if (this.dustSpawnCounter >= DUST_SPAWN_INTERVAL_FRAMES) {
+                // Проверяем, активно ли нитро в текущем ходу
+                const isNitroActiveThisTurn = this.car.getData('isNitroActiveThisTurn') || false;
+                DustParticle.spawnDustParticles(this, this.car, this.dustParticlesGroup, this.wheelPositions, this.currentBiome, isNitroActiveThisTurn); 
+                this.dustSpawnCounter = 0; // Сброс счетчика
+            }
         }
 
         if (this.isMoving && this.physics.world?.destination) {
@@ -1236,37 +1264,9 @@ class GameScene extends Phaser.Scene {
             this.updateInfoText();
         }
 
-        // --- Логика стрелки портала ---
-        if (!this.cube || !this.cube.active) {
-            if (this.ui) this.ui.portalArrow.setVisible(false);
-        } else {
-            const camera = this.cameras.main;
-            const inCameraView = camera.worldView.contains(this.cube.x, this.cube.y);
-
-            if (inCameraView) {
-                if (this.ui) this.ui.portalArrow.setVisible(false);
-            } else {
-                if (this.ui) this.ui.portalArrow.setVisible(true);
-
-                const screenCenterX = this.cameras.main.width / 2;
-                const screenCenterY = this.cameras.main.height / 2;
-
-                const portalWorldPos = new Phaser.Math.Vector2(this.cube.x, this.cube.y);
-                const carWorldPos = new Phaser.Math.Vector2(this.car.x, this.car.y);
-                const angleRad = Phaser.Math.Angle.Between(carWorldPos.x, carWorldPos.y, portalWorldPos.x, portalWorldPos.y);
-
-                const margin = 50;
-                const radius = Math.min(this.cameras.main.width, this.cameras.main.height) / 2 - margin;
-
-                const arrowScreenX = screenCenterX + Math.cos(angleRad) * radius;
-                const arrowScreenY = screenCenterY + Math.sin(angleRad) * radius;
-
-                if (this.ui) {
-                    this.ui.portalArrow.setPosition(arrowScreenX, arrowScreenY);
-                    const angleDeg = Phaser.Math.RadToDeg(angleRad) - 90;
-                    this.ui.portalArrow.setAngle(angleDeg);
-                }
-            }
+        // Обновляем стрелку портала через UI
+        if (this.ui) {
+            this.ui.updatePortalArrow();
         }
 
         if (this.car && this.cameras.main.deadzone) {
@@ -1280,6 +1280,23 @@ class GameScene extends Phaser.Scene {
         if (!this.isMoving && this.car?.visible && this.carShadow && !this.carShadow.visible) {
             this.carShadow.setVisible(true);
         }
+
+        // Обновление активных частиц пыли, если машина движется
+        if (this.isMoving && this.dustParticlesGroup) {
+            this.dustParticlesGroup.getChildren().forEach(particle => {
+                if (particle.active) {
+                    particle.update(); // ИСПРАВЛЕНО ранее (если не применилось)
+                }
+            });
+        }
+         // Удаляем неактивные частицы из группы, чтобы не накапливались
+        if (this.dustParticlesGroup) {
+            this.dustParticlesGroup.getChildren().forEach(particle => {
+                if (!particle.active) {
+                    this.dustParticlesGroup.remove(particle, true, true);
+                }
+            });
+        }
     }
 
     // --- Завершение хода --- 
@@ -1287,7 +1304,10 @@ class GameScene extends Phaser.Scene {
         if (this.checkDroneInterception()) {
             return; 
         }
-
+        
+        // Остановка звука двигателя при завершении движения
+        this.soundManager.stopEngine();
+        
         if (this.car?.active) {
             const nextSpeed = this.car.getData('nextSpeed');
             const nextNitroAvailable = this.car.getData('nextNitroAvailable');
@@ -1295,8 +1315,22 @@ class GameScene extends Phaser.Scene {
             const speedForThisTurn = (nextSpeed !== undefined) ? nextSpeed : this.car.getData('speed') ?? MIN_SPEED;
             this.car.setData('speed', speedForThisTurn);
             
+            // Обновляем скорость воспроизведения звука двигателя
+            this.soundManager.updateEngineSoundRate(speedForThisTurn);
+            
             this.car.setData('onSwamp', false);
             this.car.setData('swampPenaltyActive', false);
+            
+            // Сбрасываем флаги болота при завершении хода
+            this.isInSwamp = false;
+            this.swampEffectAppliedThisTurn = false; // Сбрасываем флаг применения эффекта для следующего хода
+            // Сбрасываем прозрачность следов колес к стандартному значению
+            this.swampTrackAlpha = TIRE_TRACK_ALPHA;
+            // --- Снимаем блокировку ускорения и нитро после завершения хода ---
+            this.isAccelerationBlockedBySwamp = false;
+            this.isNitroBlockedBySwamp = false;
+            if (this.arcController) this.arcController.setAccelerationBlockedBySwamp(false);
+            // ---
             
             if (nextSpeed !== undefined) {
                 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -1329,6 +1363,7 @@ class GameScene extends Phaser.Scene {
 
             this.car.setData('nextSpeed', undefined);
             this.car.setData('nextNitroAvailable', undefined);
+            this.car.setData('isNitroActiveThisTurn', false); // ADDED: Reset nitro flag after move
         }
 
         if (this.tireTrackGraphics) {
@@ -1346,22 +1381,7 @@ class GameScene extends Phaser.Scene {
             return;
         }
 
-        // Проверяем, не находится ли машина на болоте после хода
-        if (this.car?.active && this.swampGroup) {
-            const isOnSwamp = this.swampGroup.getChildren().some(swamp => 
-                Phaser.Math.Distance.Between(this.car.x, this.car.y, swamp.x, swamp.y) < GRID_CELL_SIZE * 0.8
-            );
-            
-            if (isOnSwamp) {
-                console.log("Car finished turn on swamp! Applying speed penalty...");
-                const currentSpeed = this.car.getData('speed');
-                const reducedSpeed = currentSpeed * SWAMP_SPEED_MULTIPLIER;
-                const newSpeed = Math.max(reducedSpeed, MIN_SPEED);
-                this.car.setData('speed', newSpeed);
-                this.car.setData('onSwamp', true);
-                console.log(`Speed reduced from ${currentSpeed.toFixed(2)} to ${newSpeed.toFixed(2)} due to swamp`);
-            }
-        }
+        // Удаляем проверку и применение штрафа болота после хода
 
         if (this.scene.isActive(this.scene.key) && !this.levelComplete && !this.gameOver && this.arcController) {
             const pointer = this.input.activePointer;
@@ -1377,11 +1397,22 @@ class GameScene extends Phaser.Scene {
 
     // --- Логика хода дронов ---
     startEnemyTurn(moveDuration) {
-        console.log(`[startEnemyTurn] Entered. Duration: ${moveDuration}`); // <-- ЛОГ 3
+        console.log(`[startEnemyTurn] Entered. Duration: ${moveDuration}`);
+        
+        // Начало нового хода - сбрасываем флаг эффекта болота
+        this.swampEffectAppliedThisTurn = false;
+        
+        // Воспроизведение звука двигателя при начале движения с начальной скоростью
+        const initialSpeed = this.car?.getData('speed') ?? MIN_SPEED;
+        this.soundManager.playEngine(initialSpeed);
+
         if (!this.dronesGroup || this.dronesGroup.getLength() === 0 || !this.car || this.levelComplete || this.gameOver) {
             console.log(`[startEnemyTurn] Aborted: dronesGroup=${!!this.dronesGroup}, dronesCount=${this.dronesGroup?.getLength() || 0}, car=${!!this.car}, levelComplete=${this.levelComplete}, gameOver=${this.gameOver}`);
             return; 
         }
+
+        // Проверяем столкновения дронов перед планированием движения
+        this.checkDroneCollisions();
 
         let targetPos;
         if (this.cube && this.cube.active) {
@@ -1400,7 +1431,7 @@ class GameScene extends Phaser.Scene {
         this.dronesGroup.getChildren().forEach((drone, index) => {
             if (drone.active && drone instanceof Drone) { 
                  drone.planMove(targetPos, maxStep);
-                 console.log(`[startEnemyTurn] Executing move for drone ${index}`); // <-- ЛОГ 4
+                 console.log(`[startEnemyTurn] Executing move for drone ${index}`);
                  drone.executeMove(moveDuration);
                  
                  dronesMoveData.push({
@@ -1420,6 +1451,28 @@ class GameScene extends Phaser.Scene {
         }
     }
 
+    checkDroneCollisions() {
+        if (!this.dronesGroup || this.dronesGroup.getLength() < 2) return;
+
+        const drones = this.dronesGroup.getChildren();
+        const collisionRadius = DRONE_KILL_RADIUS_CELLS * GRID_CELL_SIZE;
+
+        // Проверяем все пары дронов на столкновение
+        for (let i = 0; i < drones.length; i++) {
+            for (let j = i + 1; j < drones.length; j++) {
+                const drone1 = drones[i];
+                const drone2 = drones[j];
+
+                if (drone1.active && drone2.active && 
+                    Phaser.Math.Distance.Between(drone1.x, drone1.y, drone2.x, drone2.y) < collisionRadius) {
+                    
+                    console.log(`Drone collision detected between ${i} and ${j}`);
+                    drone1.handleDroneCollision(drone2);
+                }
+            }
+        }
+    }
+
     checkDroneInterception() {
         if (!this.dronesGroup || this.dronesGroup.getLength() === 0 || !this.car || this.levelComplete || this.gameOver) return false;
         
@@ -1427,6 +1480,11 @@ class GameScene extends Phaser.Scene {
         this.dronesGroup.getChildren().forEach(drone => {
             if (drone.active && drone instanceof Drone && drone.checkKill(this.car)) {
                 console.log("Drone interception!");
+                // Останавливаем звук двигателя немедленно
+                this.soundManager.stopEngine(true);
+                this.soundManager.stopReplayEngine(true);
+                // Воспроизводим звук перехвата дроном
+                this.soundManager.playDrone();
                 this.triggerGameOver('INTERCEPTED!');
                 intercepted = true;
                 return; 
@@ -1444,7 +1502,20 @@ class GameScene extends Phaser.Scene {
                 this.portalForReplay.destroy();
                 this.portalForReplay = null;
             }
+            // Очистка частиц пыли реплея
+            if (this.replayDustParticlesGroup) {
+                this.replayDustParticlesGroup.clear(true, true);
+            }
             return;
+        }
+
+        // Останавливаем обычный звук двигателя и запускаем звук для реплея
+        this.soundManager.stopEngine(true);
+        this.soundManager.playReplayEngine(MIN_SPEED);
+
+        // Очищаем частицы пыли от основной игры
+        if (this.dustParticlesGroup) {
+            this.dustParticlesGroup.clear(true, true);
         }
 
         if (this.tiresTrackRT) {
@@ -1468,7 +1539,6 @@ class GameScene extends Phaser.Scene {
         } else {
             replayShadowColor = SHADOW_COLOR; // Запасной вариант
         }
-        console.log(`Using replay shadow color: 0x${replayShadowColor.toString(16)}`);
 
         // Очищаем контроллер
         if (this.arcController) this.arcController.clearVisuals();
@@ -1516,7 +1586,7 @@ class GameScene extends Phaser.Scene {
             firstMove.dronesMoves.forEach((droneData, index) => {
                 // Создаем реплей-дрон
                 const replayDrone = this.add.sprite(droneData.startX, droneData.startY, DRONE_KEY)
-                    .setDepth(6) // Чуть выше основных объектов
+                    .setDepth(15) // Чуть выше основных объектов
                     .setOrigin(0.5)
                     .setScale(0.6);
                     
@@ -1607,7 +1677,8 @@ class GameScene extends Phaser.Scene {
                 isSnowReplay: isSnowReplay,
                 totalSkidVectorX: totalSkidVectorX,
                 totalSkidVectorY: totalSkidVectorY,
-                dronesMoves: step.dronesMoves || [] // Добавляем данные о движении дронов
+                dronesMoves: step.dronesMoves || [], // Добавляем данные о движении дронов
+                isNitroUsed: step.isNitroUsed || false // ADDED: Carry over nitro usage flag
             });
         }
 
@@ -1617,7 +1688,7 @@ class GameScene extends Phaser.Scene {
             targets: { progress: 0 },
             progress: 1,
             duration: totalDuration,
-            ease: 'Linear', // Используем Linear, так как скорость уже заложена в duration сегментов
+            ease: 'Linear',
             onUpdate: (tween, target) => {
                 if (!this.replayCar || !this.replayCar.active || !this.replayCarShadow || !this.replayCarShadow.active) return;
 
@@ -1639,19 +1710,43 @@ class GameScene extends Phaser.Scene {
                 }
 
                 if (!currentSegment) {
-                     // На очень короткое время в начале может не найтись сегмент
-                     if (pathSegments.length > 0) {
-                         currentSegment = pathSegments[0];
-                         segmentStartTime = 0;
-                     } else {
-                         console.warn("Smooth Replay: Could not find current segment.");
-                         return;
-                     }
+                    if (pathSegments.length > 0) {
+                        currentSegment = pathSegments[0];
+                        segmentStartTime = 0;
+                    } else {
+                        return;
+                    }
                 }
 
                 const segmentProgress = currentSegment.duration > 0
                     ? Phaser.Math.Clamp((currentTime - segmentStartTime) / currentSegment.duration, 0, 1)
-                    : 1; // Если длительность 0, считаем завершенным
+                    : 1;
+
+                // Рассчитываем текущую скорость на основе пройденного расстояния
+                let currentSpeed = MIN_SPEED;
+                if (currentSegment) {
+                    const startX = currentSegment.startX;
+                    const startY = currentSegment.startY;
+                    const endX = currentSegment.isSnowReplay ? currentSegment.finalTargetX : currentSegment.targetX;
+                    const endY = currentSegment.isSnowReplay ? currentSegment.finalTargetY : currentSegment.targetY;
+                    
+                    const totalDistance = Phaser.Math.Distance.Between(startX, startY, endX, endY);
+                    const timePerSegment = currentSegment.duration / 1000; // в секундах
+                    
+                    if (timePerSegment > 0) {
+                        // Рассчитываем скорость в единицах в секунду
+                        const speedInUnits = totalDistance / timePerSegment;
+                        // Нормализуем скорость к диапазону MIN_SPEED - MAX_SPEED
+                        currentSpeed = Phaser.Math.Clamp(
+                            speedInUnits / (GRID_CELL_SIZE * 2), // Эмпирический коэффициент для нормализации
+                            MIN_SPEED,
+                            MAX_SPEED
+                        );
+                    }
+                }
+
+                // Обновляем скорость звука двигателя в реплее
+                this.soundManager.updateReplayEngineSoundRate(currentSpeed);
 
                 const arcData = currentSegment.arcData;
                 const useArcMovement = arcData &&
@@ -1737,7 +1832,7 @@ class GameScene extends Phaser.Scene {
                     });
                 }
 
-                this.drawReplayTireTracks();
+                this.drawReplayTireTracks(currentSegment); // MODIFIED: Pass currentSegment
 
                 if (this.portalForReplay && !this.portalForReplay.visible) {
                      this.portalForReplay.setVisible(true);
@@ -1745,6 +1840,9 @@ class GameScene extends Phaser.Scene {
             },
             onComplete: () => {
                 console.log("Smooth Replay Finished.");
+                // Останавливаем звук двигателя реплея
+                this.soundManager.stopReplayEngine();
+
                 if (this.replayCar && this.replayCar.active) {
                     const lastSegment = pathSegments[pathSegments.length - 1];
                     if (lastSegment) {
@@ -1790,22 +1888,28 @@ class GameScene extends Phaser.Scene {
         });
     }
 
-    drawReplayTireTracks() {
+    drawReplayTireTracks(currentSegment) { // MODIFIED: Accept currentSegment
         if (!this.replayCar || !this.tiresTrackRT || !this.tireTrackGraphics) return;
         
+        // console.log("[ReplayTireTracks] currentSegment.isNitroUsed:", currentSegment ? currentSegment.isNitroUsed : "No segment"); // DEBUG LOG REMOVED
+
         const carAngle = Phaser.Math.DegToRad(this.replayCar.angle);
         
         this.tireTrackGraphics.clear();
         
         let trackColor;
-        if (this.replayBiome === BIOME_DESERT) {
-            trackColor = BIOME_DESERT_COLOR;
-        } else if (this.replayBiome === BIOME_SNOW) {
-            trackColor = BIOME_SNOW_COLOR;
-        } else if (this.replayBiome === BIOME_GRASS) {
-            trackColor = BIOME_GRASS_COLOR;
+        if (currentSegment && currentSegment.isNitroUsed) { // ADDED: Check nitro usage for replay
+            trackColor = TIRE_COLOR_NITRO; // CHANGED to new constant
         } else {
-            trackColor = TIRE_TRACK_COLOR; // Стандартный цвет как запасной вариант
+            if (this.replayBiome === BIOME_DESERT) {
+                trackColor = BIOME_DESERT_COLOR;
+            } else if (this.replayBiome === BIOME_SNOW) {
+                trackColor = BIOME_SNOW_COLOR;
+            } else if (this.replayBiome === BIOME_GRASS) {
+                trackColor = BIOME_GRASS_COLOR;
+            } else {
+                trackColor = TIRE_TRACK_COLOR; // Стандартный цвет как запасной вариант
+            }
         }
         
         this.tireTrackGraphics.fillStyle(trackColor, TIRE_TRACK_ALPHA);
@@ -1929,6 +2033,12 @@ class GameScene extends Phaser.Scene {
         if (car !== this.car || !car || !obstacle || this.levelComplete || this.gameOver || !car.active) return;
 
         console.log("Collision with obstacle!");
+        
+        // Немедленная остановка звука двигателя при столкновении
+        this.soundManager.stopEngine(true);
+        
+        // Воспроизведение звука столкновения
+        this.soundManager.playCrash();
 
         this.tweens.killAll(); 
         if (this.carShadow) this.tweens.killTweensOf(this.carShadow);
@@ -1943,43 +2053,58 @@ class GameScene extends Phaser.Scene {
     }
 
     handleSwamp(car, swamp) {
-        if (car !== this.car || !car || !swamp || this.levelComplete || this.gameOver || !car.active || this.isMoving) return;
-
-        if (!car.getData('onSwamp')) {
-            console.log("Car is on swamp! Reducing speed...");
-            car.setData('onSwamp', true);
-            
-            car.setData('swampPenaltyActive', true);
+        // Проверка на активность машины и болота
+        if (car !== this.car || !car || !swamp || this.levelComplete || this.gameOver || !car.active) return;
+        // Если эффект болота уже был применен в этом ходу, игнорируем повторные коллизии
+        if (this.swampEffectAppliedThisTurn) return;
+        console.log("Collision with swamp!");
+        this.swampEffectAppliedThisTurn = true;
+        // Если машина уже в болоте, не показываем эффект снова
+        if (this.isInSwamp) return;
+        this.isInSwamp = true;
+        // Устанавливаем минимальную скорость на следующий ход
+        this.car.setData('nextSpeed', MIN_SPEED);
+        // Устанавливаем увеличенную прозрачность следов колес для болота
+        this.swampTrackAlpha = 0.2;
+        // --- Блокируем только ускорение и нитро ---
+        this.isAccelerationBlockedBySwamp = true;
+        this.isNitroBlockedBySwamp = true;
+        if (this.arcController) this.arcController.setAccelerationBlockedBySwamp(true);
+        
+        // Показываем эффект через UI
+        if (this.ui) {
+            this.ui.showSwampEffect({ x: this.car.x, y: this.car.y });
         }
-        
-        const currentSpeed = car.getData('speed');
-        const reducedSpeed = currentSpeed * SWAMP_SPEED_MULTIPLIER;
-        
-        const newSpeed = Math.max(reducedSpeed, MIN_SPEED);
-        car.setData('speed', newSpeed);
-        
-        this.updateInfoText();
     }
 
     drawTireTracks() {
         if (!this.car || !this.tiresTrackRT || !this.tireTrackGraphics) return;
         
+        const isNitroActiveThisTurn = this.car.getData('isNitroActiveThisTurn');
+        // console.log("[DrawTireTracks] isNitroActiveThisTurn:", isNitroActiveThisTurn); // DEBUG LOG REMOVED
+
         const carAngle = Phaser.Math.DegToRad(this.car.angle);
         
         this.tireTrackGraphics.clear();
         
         let trackColor;
-        if (this.currentBiome === BIOME_DESERT) {
-            trackColor = BIOME_DESERT_COLOR;
-        } else if (this.currentBiome === BIOME_SNOW) {
-            trackColor = BIOME_SNOW_COLOR;
-        } else if (this.currentBiome === BIOME_GRASS) {
-            trackColor = BIOME_GRASS_COLOR;
+        if (isNitroActiveThisTurn) { // ADDED: Check for active nitro
+            trackColor = TIRE_COLOR_NITRO; // CHANGED to new constant
         } else {
-            trackColor = TIRE_TRACK_COLOR; 
+            if (this.currentBiome === BIOME_DESERT) {
+                trackColor = BIOME_DESERT_COLOR;
+            } else if (this.currentBiome === BIOME_SNOW) {
+                trackColor = BIOME_SNOW_COLOR;
+            } else if (this.currentBiome === BIOME_GRASS) {
+                trackColor = BIOME_GRASS_COLOR;
+            } else {
+                trackColor = TIRE_TRACK_COLOR; 
+            }
         }
         
-        this.tireTrackGraphics.fillStyle(trackColor, TIRE_TRACK_ALPHA);
+        // Используем переменную swampTrackAlpha, если машина в болоте, иначе используем константу
+        const trackAlpha = this.isInSwamp ? this.swampTrackAlpha : TIRE_TRACK_ALPHA;
+        this.tireTrackGraphics.fillStyle(trackColor, trackAlpha);
         
         for (const wheel of this.wheelPositions) {
             const rotatedX = wheel.offsetX * Math.cos(carAngle) - wheel.offsetY * Math.sin(carAngle);

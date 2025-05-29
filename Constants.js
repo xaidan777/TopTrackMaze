@@ -1,11 +1,11 @@
-const GAME_VERSION = '0.4.29'; // Версия игры для кэширования ресурсов
+const GAME_VERSION = '0.5.26'; // Версия игры для кэширования ресурсов
 const GAME_WIDTH = 1536;
 const GAME_HEIGHT = 1536;
 const GRID_CELL_SIZE = 32;
 
 // Соотношения сторон
-const MIN_ASPECT_RATIO = 3/4;  // Минимальное соотношение (вертикальный режим)
-const MAX_ASPECT_RATIO = 4/3;  // Максимальное соотношение (горизонтальный режим)
+const MIN_ASPECT_RATIO = 1/2;  // Минимальное соотношение (вертикальный режим)
+const MAX_ASPECT_RATIO = 2/1;  // Максимальное соотношение (горизонтальный режим)
 
 const SHADOW_COLOR = 0x000000; // Цвет тени (белый) - используем числовой формат для tint
 const SHADOW_ALPHA = 0.3;      // Прозрачность тени (50%)
@@ -13,7 +13,8 @@ const SHADOW_OFFSET_Y = 3;     // Вертикальное смещение те
 const SHADOW_DEPTH_OFFSET = -1; // Насколько "ниже" основного спрайта рисовать тень
 
 
-const VIRTUAL_JOYSTICK_BLOCK_RADIUS = 20;
+const VIRTUAL_JOYSTICK_BLOCK_RADIUS = 40;
+const VIRTUAL_JOYSTICK_ACTIVATION_DELAY = 100; // Задержка активации в миллисекундах
 
 // --- Цвета и прозрачность ---
 const COLOR_BRAKE       = 0xddb0ad;
@@ -38,6 +39,8 @@ const CUBE_ALPHA             = 1.0;
 const TIRE_TRACK_COLOR = 0x333333;  // Цвет следов от колес (темно-серый)
 const TIRE_TRACK_ALPHA = 0.1;       // Прозрачность следов
 const TIRE_TRACK_RADIUS = 3;        // Радиус следа колеса в пикселях
+const TIRE_COLOR_NITRO  = 0x00b8be; // Новый цвет для следов NITRO
+
 
 
 // --- Параметры машины ---  
@@ -45,7 +48,8 @@ const carRadius            = 11;
 const MIN_SPEED            = 0.1;
 const MAX_SPEED            = 5.0;
 const SPEED_INCREMENT      = 1;
-const RED_ZONE_SPEED_BOOST = 2.5
+const RED_ZONE_SPEED_BOOST = 2.5;
+const BRAKE_SPEED_FACTOR   = 0.85; // Коэффициент для уменьшения скорости при торможении
 
 // --- Параметры арки (GUI) ---
 const BASE_INNER_RADIUS_GUI           = 35;
@@ -60,7 +64,7 @@ const GAP_SNAP_THRESHOLD = 15;
 // --- Факторы влияния скорости на ВИД арки (GUI) ---
 const SPEED_TO_GUI_RADIUS_FACTOR      = 0;
 const GUI_THICKNESS_REDUCTION_FACTOR  = 0.1;
-const MAX_GUI_ANGLE_REDUCTION_FACTOR  = 2.7;
+const MAX_GUI_ANGLE_REDUCTION_FACTOR  = 3.7;
 const MIN_ARC_ANGLE_DEG               = 25;
 const MIN_ARC_THICKNESS               = 20;
 
@@ -88,7 +92,7 @@ const REVERSE_ARC_ANGLE_DEG     = 20;
 // --- Параметры расчета ДИСТАНЦИИ хода ---
 const MIN_MOVE_DISTANCE_FACTOR  = 0.5;
 const MAX_MOVE_DISTANCE_FACTOR  = 2.5;
-const SPEED_TO_DISTANCE_MULTIPLIER = 20;
+const SPEED_TO_DISTANCE_MULTIPLIER = 10;
 
 // --- Параметры движения и скорости ---
 const BASE_PHYSICS_MOVE_SPEED_FACTOR = 1.0;
@@ -139,12 +143,12 @@ const SWAMP_KEY              = 'swamp';
 // --- Параметры SWAMP ---
 const SWAMP_SPEED_MULTIPLIER = 0.1;
 const SWAMP_SPEED_INCREMENT_PENALTY = 0.25; // Штраф к изменению скорости на болоте
-const SWAMP_THRESHOLD_OFFSET = 0.3; //чем выше значение, тем больше болот
+const SWAMP_THRESHOLD_OFFSET = 0.13; // Базовое значение, будет заменено в зависимости от уровня
 
 // --- Параметры дронов ---
 const DRONE_KEY               = 'drone';
 // DRONE_MAX_PER_LEVEL определяется в настройках уровней
-const DRONE_RANGE_CELLS       = 2;        // дальность рывка за ход
+const DRONE_RANGE_CELLS       = 2.5;        // дальность рывка за ход
 const DRONE_KILL_RADIUS_CELLS = 1.5;        // радиус перехвата
 
 // --- Параметры прогрессии ---
@@ -254,4 +258,30 @@ const getLevelSettings = (level) => {
 const getBiomeForLevel = (level) => {
     return LEVEL_SETTINGS[level]?.biome || BIOME_DESERT;
 };
+
+// --- Параметры звука двигателя ---
+const ENGINE_SOUND_MIN_RATE = 1;  // Минимальная скорость воспроизведения (при MIN_SPEED)
+const ENGINE_SOUND_MAX_RATE = 1.7;  // Максимальная скорость воспроизведения (при MAX_SPEED)
+const ENGINE_SOUND_BASE_VOLUME = 0.4; // Базовая громкость звука двигателя
+
+// --- Параметры звука двигателя в реплее ---
+const REPLAY_ENGINE_SOUND_MIN_RATE = 1.1;  // Минимальная скорость воспроизведения в реплее
+const REPLAY_ENGINE_SOUND_MAX_RATE = 1.7;  // Максимальная скорость воспроизведения в реплее
+const REPLAY_ENGINE_SOUND_BASE_VOLUME = 0.2; // Базовая громкость звука двигателя в реплее
+
+// Константы для частиц пыли
+const DUST_PARTICLE_START_RADIUS = 5;
+const DUST_PARTICLE_END_RADIUS = 30;
+// const DUST_PARTICLE_DURATION_FRAMES = 180; // Старая константа, заменена на DUST_PARTICLE_LIFE_FRAMES
+const DUST_PARTICLE_TEXTURE_KEY = 'dust_particle'; // Ключ для текстуры частицы пыли
+const DUST_SPAWN_INTERVAL_FRAMES = 1; // Создавать частицы каждые N игровых кадров
+const DUST_PARTICLE_NITRO_COLOR = 0x24c2c9; // Цвет частиц пыли при использовании нитро
+
+// Новые константы для управления частицами пыли
+const DUST_PARTICLE_LIFE_FRAMES = 60;       // Время жизни частицы в игровых кадрах (было DUST_PARTICLE_DURATION_FRAMES)
+const DUST_PARTICLE_START_ALPHA = 0.1;      // Начальная прозрачность
+const DUST_PARTICLE_END_ALPHA = 0.0;        // Конечная прозрачность
+const DUST_PARTICLE_WIGGLE_MAX_OFFSET = 20; // Максимальное смещение для "покачивания" частицы по X и Y (в пикселях)
+const DUST_PARTICLE_WIGGLE_UPDATE_INTERVAL_FRAMES = 15; // Как часто выбирается новая цель для покачивания (в кадрах)
+const DUST_PARTICLE_WIGGLE_TRANSITION_FRAMES = 30;    // За сколько кадров частица достигнет новой цели покачивания
 

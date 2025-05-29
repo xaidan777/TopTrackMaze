@@ -13,7 +13,8 @@ class LevelGenerator {
             currentObstacleThreshold,
             obstacleAssetKey,
             shadowColor,
-            isBiomeGrass
+            isBiomeGrass,
+            currentLevel
         } = params;
 
         console.log("Creating level obstacles, border, and cube using obstacle key:", obstacleAssetKey);
@@ -60,7 +61,8 @@ class LevelGenerator {
                 gridHeight,
                 currentObstacleThreshold,
                 swampGroup,
-                occupiedCells
+                occupiedCells,
+                currentLevel
             });
         }
 
@@ -252,7 +254,7 @@ class LevelGenerator {
         return portalSprite;
     }
 
-    spawnFuelPickup(occupiedCells, gridWidth, gridHeight, fuelPickupGroup) {
+    spawnFuelPickup(occupiedCells, gridWidth, gridHeight, fuelPickupGroup, existingPickups = []) {
         if (!fuelPickupGroup || !occupiedCells) {
             console.error("Fuel pickup group or occupiedCells not initialized!");
             return null;
@@ -261,36 +263,63 @@ class LevelGenerator {
         let attempts = 0;
         const maxAttempts = gridWidth * gridHeight / 2;
         let pickup = null;
+        const minDistance = 8; // минимальное расстояние между пикапами в клетках
+        let distanceCheckDisabled = false;
 
-        console.log("Attempting to spawn fuel pickup...");
         while (!pickupSpawned && attempts < maxAttempts) {
             const randomGridX = Phaser.Math.Between(0, gridWidth - 1);
             const randomGridY = Phaser.Math.Between(0, gridHeight - 1);
+            
             if (
                 randomGridY >= 0 && randomGridY < occupiedCells.length &&
                 randomGridX >= 0 && randomGridX < occupiedCells[randomGridY].length &&
                 !occupiedCells[randomGridY][randomGridX]
             ) {
-                const pickupX = randomGridX * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
-                const pickupY = randomGridY * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
-                pickup = fuelPickupGroup.create(pickupX, pickupY, FUEL_PICKUP_KEY);
-                if (pickup) {
-                    pickup.setOrigin(0.5).setDepth(0);
-                    pickup.setDisplaySize(GRID_CELL_SIZE * 0.8, GRID_CELL_SIZE * 0.8);
-                    this.scene.tweens.add({
-                        targets: pickup,
-                        scale: pickup.scale * 1.1,
-                        yoyo: true,
-                        repeat: -1,
-                        ease: 'Sine.easeInOut',
-                        duration: 700
-                    });
-                    occupiedCells[randomGridY][randomGridX] = true;
-                    pickupSpawned = true;
-                    console.log(`Fuel pickup spawned at grid (${randomGridX}, ${randomGridY})`);
+                // Проверяем расстояние до существующих пикапов, если условие не отключено
+                let validDistance = true;
+                if (!distanceCheckDisabled && existingPickups.length > 0) {
+                    for (const existingPickup of existingPickups) {
+                        if (existingPickup && existingPickup.active) {
+                            const existingGridX = Math.floor(existingPickup.x / GRID_CELL_SIZE);
+                            const existingGridY = Math.floor(existingPickup.y / GRID_CELL_SIZE);
+                            const distance = Phaser.Math.Distance.Between(randomGridX, randomGridY, existingGridX, existingGridY);
+                            if (distance < minDistance) {
+                                validDistance = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (validDistance) {
+                    const pickupX = randomGridX * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
+                    const pickupY = randomGridY * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
+                    pickup = fuelPickupGroup.create(pickupX, pickupY, FUEL_PICKUP_KEY);
+                    if (pickup) {
+                        pickup.setOrigin(0.5).setDepth(0);
+                        pickup.setDisplaySize(GRID_CELL_SIZE * 0.8, GRID_CELL_SIZE * 0.8);
+                        this.scene.tweens.add({
+                            targets: pickup,
+                            scale: pickup.scale * 1.1,
+                            yoyo: true,
+                            repeat: -1,
+                            ease: 'Sine.easeInOut',
+                            duration: 700
+                        });
+                        occupiedCells[randomGridY][randomGridX] = true;
+                        pickupSpawned = true;
+                        console.log(`Fuel pickup spawned at grid (${randomGridX}, ${randomGridY})`);
+                    }
                 }
             }
+            
             attempts++;
+            
+            // Отключаем проверку расстояния после 10 неудачных попыток
+            if (attempts >= 10 && !distanceCheckDisabled && !pickupSpawned) {
+                distanceCheckDisabled = true;
+                console.log("Disabling distance check for fuel pickup after 10 failed attempts");
+            }
         }
         if (!pickupSpawned) {
             console.warn(`Could not find a free cell to spawn fuel pickup after ${attempts} attempts.`);
@@ -299,7 +328,7 @@ class LevelGenerator {
         return pickup;
     }
     
-    spawnNitroPickup(occupiedCells, gridWidth, gridHeight, nitroPickupGroup) {
+    spawnNitroPickup(occupiedCells, gridWidth, gridHeight, nitroPickupGroup, existingPickups = []) {
         if (!nitroPickupGroup || !occupiedCells) {
             console.error("Nitro pickup group or occupiedCells not initialized!");
             return null;
@@ -308,36 +337,63 @@ class LevelGenerator {
         let attempts = 0;
         const maxAttempts = gridWidth * gridHeight / 2;
         let pickup = null;
+        const minDistance = 8; // минимальное расстояние между пикапами в клетках
+        let distanceCheckDisabled = false;
 
-        console.log("Attempting to spawn nitro pickup...");
         while (!pickupSpawned && attempts < maxAttempts) {
             const randomGridX = Phaser.Math.Between(0, gridWidth - 1);
             const randomGridY = Phaser.Math.Between(0, gridHeight - 1);
+            
             if (
                 randomGridY >= 0 && randomGridY < occupiedCells.length &&
                 randomGridX >= 0 && randomGridX < occupiedCells[randomGridY].length &&
                 !occupiedCells[randomGridY][randomGridX]
             ) {
-                const pickupX = randomGridX * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
-                const pickupY = randomGridY * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
-                pickup = nitroPickupGroup.create(pickupX, pickupY, NITRO_PICKUP_KEY);
-                if (pickup) {
-                    pickup.setOrigin(0.5).setDepth(0);
-                    pickup.setDisplaySize(GRID_CELL_SIZE * 0.8, GRID_CELL_SIZE * 0.8);
-                    this.scene.tweens.add({
-                        targets: pickup,
-                        scale: pickup.scale * 1.1,
-                        yoyo: true,
-                        repeat: -1,
-                        ease: 'Sine.easeInOut',
-                        duration: 700
-                    });
-                    occupiedCells[randomGridY][randomGridX] = true;
-                    pickupSpawned = true;
-                    console.log(`Nitro pickup spawned at grid (${randomGridX}, ${randomGridY})`);
+                // Проверяем расстояние до существующих пикапов, если условие не отключено
+                let validDistance = true;
+                if (!distanceCheckDisabled && existingPickups.length > 0) {
+                    for (const existingPickup of existingPickups) {
+                        if (existingPickup && existingPickup.active) {
+                            const existingGridX = Math.floor(existingPickup.x / GRID_CELL_SIZE);
+                            const existingGridY = Math.floor(existingPickup.y / GRID_CELL_SIZE);
+                            const distance = Phaser.Math.Distance.Between(randomGridX, randomGridY, existingGridX, existingGridY);
+                            if (distance < minDistance) {
+                                validDistance = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (validDistance) {
+                    const pickupX = randomGridX * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
+                    const pickupY = randomGridY * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
+                    pickup = nitroPickupGroup.create(pickupX, pickupY, NITRO_PICKUP_KEY);
+                    if (pickup) {
+                        pickup.setOrigin(0.5).setDepth(0);
+                        pickup.setDisplaySize(GRID_CELL_SIZE * 0.8, GRID_CELL_SIZE * 0.8);
+                        this.scene.tweens.add({
+                            targets: pickup,
+                            scale: pickup.scale * 1.1,
+                            yoyo: true,
+                            repeat: -1,
+                            ease: 'Sine.easeInOut',
+                            duration: 700
+                        });
+                        occupiedCells[randomGridY][randomGridX] = true;
+                        pickupSpawned = true;
+                        console.log(`Nitro pickup spawned at grid (${randomGridX}, ${randomGridY})`);
+                    }
                 }
             }
+            
             attempts++;
+            
+            // Отключаем проверку расстояния после 10 неудачных попыток
+            if (attempts >= 10 && !distanceCheckDisabled && !pickupSpawned) {
+                distanceCheckDisabled = true;
+                console.log("Disabling distance check for nitro pickup after 10 failed attempts");
+            }
         }
         if (!pickupSpawned) {
             console.warn(`Could not find a free cell to spawn nitro pickup after ${attempts} attempts.`);
@@ -346,10 +402,12 @@ class LevelGenerator {
         return pickup;
     }
 
-    _generateSwamps({ gridWidth, gridHeight, currentObstacleThreshold, swampGroup, occupiedCells }) {
-        // Используем порог для болот ниже, чем для препятствий
-        const swampThreshold = currentObstacleThreshold - SWAMP_THRESHOLD_OFFSET;
-        console.log(`Generating swamps with threshold: ${swampThreshold.toFixed(2)}`);
+    _generateSwamps({ gridWidth, gridHeight, currentObstacleThreshold, swampGroup, occupiedCells, currentLevel }) {
+        // Новая формула: currentObstacleThreshold - (currentLevel / 200)
+        const swampThreshold = currentObstacleThreshold - (currentLevel / 200) - SWAMP_THRESHOLD_OFFSET;
+        console.log(`Generating swamps with threshold: ${swampThreshold.toFixed(2)} (level ${currentLevel}, obstacle threshold: ${currentObstacleThreshold.toFixed(2)})`);
+        
+        // Примечание: Болота генерируются только для визуальных эффектов и не влияют на скорость машины
 
         // Генерируем болота
         for (let gy = 0; gy < gridHeight; gy++) {

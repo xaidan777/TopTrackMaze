@@ -12,6 +12,22 @@ class ArcController {
         this.arcParams = {};          // Параметры текущей дуги (GUI)
         this.hoveredArcZone = null;   // Зона дуги под курсором
         this.currentArcData = null;   // Данные для отрисовки траектории и движения
+        this.accelerationBlockedBySwamp = false;  // Новый флаг: блокировка ускорения
+        
+        // Новые свойства для буфера выхода из зоны
+        this.lastZonePosition = { x: 0, y: 0 };   // Последняя позиция в активной зоне
+        this.isOutsideZoneBuffer = false;         // Флаг выхода за границы зоны, но внутри буфера
+        this.outsideZoneDistance = 0;             // Расстояние от границы зоны после выхода
+        this.ZONE_EXIT_BUFFER = 30;               // Буфер в пикселях для выхода из зоны
+    }
+
+    setAccelerationBlockedBySwamp(flag) {
+        this.accelerationBlockedBySwamp = flag;
+        if (flag) {
+            this.drawState(); // Перерисовать арку с учетом блокировки
+        } else {
+            this.drawState();
+        }
     }
 
     // --- Методы расчета и отрисовки состояния ---
@@ -90,104 +106,78 @@ class ArcController {
 
     drawControlArc() {
         if (!this.controlArcGraphics || !this.car) return;
+        // --- Если болото, не рисуем ускорение и нитро ---
         const ap = this.arcParams;
         this.controlArcGraphics.clear();
         const currentSpeed = this.car.getData('speed') ?? MIN_SPEED;
-        const nitroAvailable = this.car.getData('nitroAvailable') ?? NITRO_AVAILABLE_BY_DEFAULT;
+        const nitroAvailable = (this.accelerationBlockedBySwamp ? false : (this.car.getData('nitroAvailable') ?? NITRO_AVAILABLE_BY_DEFAULT));
         const hovered = this.hoveredArcZone;
         const HOVER_ALPHA = ZONE_ALPHA_HOVER;
         const DEFAULT_RED_ALPHA = ZONE_ALPHA_DEFAULT;
         const DEFAULT_ACCEL_ALPHA = ZONE_ALPHA_DEFAULT + 0.1;
         const DEFAULT_BRAKE_ALPHA = ZONE_ALPHA_DEFAULT + 0.1;
         const DEFAULT_REVERSE_ALPHA = ZONE_ALPHA_DEFAULT + 0.2;
-
         // Очищаем предыдущие спрайты с текстурами
         this.scene.children.list
             .filter(child => child.texture && 
                   (child.texture.key === ARC_SLOW_KEY || child.texture.key === ARC_GO_KEY) &&
                   child._arcUI === true)
             .forEach(sprite => sprite.destroy());
-
         if (ap && ap.outerRadius > ap.innerRadius && ap.halfAngleRad > 0 && ap.innerRadius >= 0) {
             const startAngle = ap.orientationRad - ap.halfAngleRad;
             const endAngle = ap.orientationRad + ap.halfAngleRad;
-            
-            // Рисуем нитро-зону
-            if (ap.workingRadius < ap.outerRadius && nitroAvailable) {
-                const redInnerRadius = (ap.workingRadius + ap.outerRadius) / 2;
-                if (redInnerRadius < ap.outerRadius) {
-                    const alpha = (hovered === 'red') ? HOVER_ALPHA : DEFAULT_RED_ALPHA;
-                    this.fillAnnularSector(this.controlArcGraphics, ap.centerX, ap.centerY, redInnerRadius, ap.outerRadius, startAngle, endAngle, COLOR_NITRO, alpha);
-                }
-            }
-
-            // Рисуем зону ускорения
-            if (ap.neutralRadius < ap.workingRadius) {
-                const alpha = (hovered === 'accelerate') ? HOVER_ALPHA : DEFAULT_ACCEL_ALPHA;
-                
-                // Используем текстуру для зоны ускорения если она доступна
-                if (this.scene.textures.exists(ARC_GO_KEY)) {
-                    // Сначала создаем маску для текстуры
-                    const maskGraphics = this.scene.make.graphics({x: 0, y: 0, add: false});
-                    
-                    // Рисуем форму сектора в маске
-                    maskGraphics.fillStyle(0xffffff);
-                    maskGraphics.beginPath();
-                    maskGraphics.arc(ap.centerX, ap.centerY, ap.workingRadius, startAngle, endAngle, false);
-                    maskGraphics.arc(ap.centerX, ap.centerY, ap.neutralRadius, endAngle, startAngle, true);
-                    maskGraphics.closePath();
-                    maskGraphics.fillPath();
-                    
-                    // Создаем геометрическую маску
-                    const mask = maskGraphics.createGeometryMask();
-                    
-                    // Создаем спрайт текстуры
-                    const diameter = Math.max(ap.workingRadius * 2, ap.workingRadius * 2);
-                    const textureSprite = this.scene.add.image(ap.centerX, ap.centerY, ARC_GO_KEY)
-                        .setOrigin(0.5, 0.5)
-                        .setAlpha(alpha)
-                        .setScale(diameter / Math.max(
-                            this.scene.textures.get(ARC_GO_KEY).source[0].width,
-                            this.scene.textures.get(ARC_GO_KEY).source[0].height
-                        ));
-                    
-                    // Помечаем спрайт как элемент UI арки для последующего управления
-                    textureSprite._arcUI = true;
-                    
-                    // Применяем маску к спрайту
-                    textureSprite.setMask(mask);
-                    
-                    // Игнорируем этот спрайт UI камерой, если она существует
-                    if (this.scene.uiCamera) {
-                        this.scene.uiCamera.ignore(textureSprite);
+            // --- Рисуем только тормоз и задний ход, если болото ---
+            if (!this.accelerationBlockedBySwamp) {
+                // Нитро-зона
+                if (ap.workingRadius < ap.outerRadius && nitroAvailable) {
+                    const redInnerRadius = (ap.workingRadius + ap.outerRadius) / 2;
+                    if (redInnerRadius < ap.outerRadius) {
+                        const alpha = (hovered === 'red') ? HOVER_ALPHA : DEFAULT_RED_ALPHA;
+                        this.fillAnnularSector(this.controlArcGraphics, ap.centerX, ap.centerY, redInnerRadius, ap.outerRadius, startAngle, endAngle, COLOR_NITRO, alpha);
                     }
-                } else {
-                    // Запасной вариант - цвет
-                    this.fillAnnularSector(this.controlArcGraphics, ap.centerX, ap.centerY, ap.neutralRadius, ap.workingRadius, startAngle, endAngle, COLOR_ACCELERATE, alpha);
+                }
+                // Зона ускорения
+                if (ap.neutralRadius < ap.workingRadius) {
+                    const alpha = (hovered === 'accelerate') ? HOVER_ALPHA : DEFAULT_ACCEL_ALPHA;
+                    if (this.scene.textures.exists(ARC_GO_KEY)) {
+                        const maskGraphics = this.scene.make.graphics({x: 0, y: 0, add: false});
+                        maskGraphics.fillStyle(0xffffff);
+                        maskGraphics.beginPath();
+                        maskGraphics.arc(ap.centerX, ap.centerY, ap.workingRadius, startAngle, endAngle, false);
+                        maskGraphics.arc(ap.centerX, ap.centerY, ap.neutralRadius, endAngle, startAngle, true);
+                        maskGraphics.closePath();
+                        maskGraphics.fillPath();
+                        const mask = maskGraphics.createGeometryMask();
+                        const diameter = Math.max(ap.workingRadius * 2, ap.workingRadius * 2);
+                        const textureSprite = this.scene.add.image(ap.centerX, ap.centerY, ARC_GO_KEY)
+                            .setOrigin(0.5, 0.5)
+                            .setAlpha(alpha)
+                            .setScale(diameter / Math.max(
+                                this.scene.textures.get(ARC_GO_KEY).source[0].width,
+                                this.scene.textures.get(ARC_GO_KEY).source[0].height
+                            ));
+                        textureSprite._arcUI = true;
+                        textureSprite.setMask(mask);
+                        if (this.scene.uiCamera) {
+                            this.scene.uiCamera.ignore(textureSprite);
+                        }
+                    } else {
+                        this.fillAnnularSector(this.controlArcGraphics, ap.centerX, ap.centerY, ap.neutralRadius, ap.workingRadius, startAngle, endAngle, COLOR_ACCELERATE, alpha);
+                    }
                 }
             }
-
-            // Рисуем зону торможения
+            // --- Тормозная зона ---
             if (ap.innerRadius < ap.neutralRadius) {
                 const alpha = (hovered === 'brake') ? HOVER_ALPHA : DEFAULT_BRAKE_ALPHA;
-                
-                // Используем текстуру для зоны торможения если она доступна
                 if (this.scene.textures.exists(ARC_SLOW_KEY)) {
-                    // Сначала создаем маску для текстуры
                     const maskGraphics = this.scene.make.graphics({x: 0, y: 0, add: false});
-                    
-                    // Рисуем форму сектора в маске
                     maskGraphics.fillStyle(0xffffff);
                     maskGraphics.beginPath();
                     maskGraphics.arc(ap.centerX, ap.centerY, ap.neutralRadius, startAngle, endAngle, false);
                     maskGraphics.arc(ap.centerX, ap.centerY, ap.innerRadius, endAngle, startAngle, true);
                     maskGraphics.closePath();
                     maskGraphics.fillPath();
-                    
-                    // Создаем геометрическую маску
                     const mask = maskGraphics.createGeometryMask();
-                    
-                    // Создаем спрайт текстуры
                     const diameter = Math.max(ap.neutralRadius * 2, ap.neutralRadius * 2);
                     const textureSprite = this.scene.add.image(ap.centerX, ap.centerY, ARC_SLOW_KEY)
                         .setOrigin(0.5, 0.5)
@@ -196,25 +186,17 @@ class ArcController {
                             this.scene.textures.get(ARC_SLOW_KEY).source[0].width,
                             this.scene.textures.get(ARC_SLOW_KEY).source[0].height
                         ));
-                    
-                    // Помечаем спрайт как элемент UI арки для последующего управления
                     textureSprite._arcUI = true;
-                    
-                    // Применяем маску к спрайту
                     textureSprite.setMask(mask);
-                    
-                    // Игнорируем этот спрайт UI камерой, если она существует
                     if (this.scene.uiCamera) {
                         this.scene.uiCamera.ignore(textureSprite);
                     }
                 } else {
-                    // Запасной вариант - цвет
                     this.fillAnnularSector(this.controlArcGraphics, ap.centerX, ap.centerY, ap.innerRadius, ap.neutralRadius, startAngle, endAngle, COLOR_BRAKE, alpha);
                 }
             }
         }
-
-        // Рисуем задний ход
+        // --- Задний ход ---
         if (currentSpeed === MIN_SPEED) {
             const carAngleRad = Phaser.Math.DegToRad(this.car.angle);
             const reverseOrientationRad = carAngleRad + Math.PI;
@@ -297,7 +279,6 @@ class ArcController {
         const distSqr = dx * dx + dy * dy;
         const pointAngleRad = Math.atan2(dy, dx);
         const carAngleRad = Phaser.Math.DegToRad(this.car.angle);
-
         if (currentSpeed === MIN_SPEED) {
             const reverseOrientationRad = carAngleRad + Math.PI;
             const halfReverseAngleRad = Phaser.Math.DegToRad(REVERSE_ARC_ANGLE_DEG / 2);
@@ -308,24 +289,27 @@ class ArcController {
                 if (Math.abs(relativeAngleRadRev) <= halfReverseAngleRad) return 'reverse';
             }
         }
-
         const ap = this.arcParams;
         if (!ap || ap.innerRadius < 0 || ap.outerRadius <= ap.innerRadius) return null;
         if (distSqr < ap.innerRadius * ap.innerRadius || distSqr > ap.outerRadius * ap.outerRadius) return null;
         const relativeAngleRadFwd = Phaser.Math.Angle.Wrap(pointAngleRad - ap.orientationRad);
         if (Math.abs(relativeAngleRadFwd) > ap.halfAngleRad) return null;
         const actualRedInnerRadius = (ap.workingRadius + ap.outerRadius) / 2;
-
         const nitroAvailable = this.car.getData('nitroAvailable') ?? NITRO_AVAILABLE_BY_DEFAULT;
-        
+        // --- Если болото, разрешаем только тормоз ---
+        if (this.accelerationBlockedBySwamp) {
+            if (distSqr <= ap.neutralRadius * ap.neutralRadius) {
+                return 'brake';
+            }
+            return null;
+        }
         if (distSqr <= ap.neutralRadius * ap.neutralRadius) {
             return 'brake';
         } else if (distSqr <= ap.workingRadius * ap.workingRadius) {
             return 'accelerate';
         } else if (distSqr < actualRedInnerRadius * actualRedInnerRadius) {
-             // Мертвая зона между accelerate/red
             return null;
-        } else { // distSqr >= actualRedInnerRadius * actualRedInnerRadius
+        } else {
             return !nitroAvailable ? null : 'red';
         }
     }
@@ -497,7 +481,7 @@ class ArcController {
 
         if (ap.outerRadius > ap.innerRadius && ap.halfAngleRad > 0 && ap.innerRadius >= 0) {
             const minRadiusCheck = Math.max(0, ap.innerRadius - thresholdDistance);
-            const maxRadiusCheck = ap.outerRadius + thresholdDistance;
+            const maxRadiusCheck = ap.workingRadius + thresholdDistance; // ИЗМЕНЕНО: outerRadius -> workingRadius
             const orientation = ap.orientationRad;
             const baseHalfAngle = ap.halfAngleRad;
 
@@ -545,140 +529,227 @@ class ArcController {
             this.currentArcData = null; // Очистить данные, если не можем обработать
             return;
         }
-
         const pointerX = pointer.worldX;
         const pointerY = pointer.worldY;
 
-        let snapResult = null;
-        let newZone = this.getArcZoneForPoint(pointerX, pointerY);
+        let currentPhysicalZone = this.getArcZoneForPoint(pointerX, pointerY);
+        // Если активен штраф болота, разрешаем только тормоз и задний ход для физической зоны
+        if (this.accelerationBlockedBySwamp && currentPhysicalZone !== 'brake' && currentPhysicalZone !== 'reverse') {
+            currentPhysicalZone = null;
+        }
+
         let effectiveX = pointerX;
         let effectiveY = pointerY;
+        let activeZoneForLogic = currentPhysicalZone;
+        let snapPointForCursor = null; // {x, y, zone} for the white dot, or null
 
-        // Проверяем, используется ли альтернативное управление (перетаскивание из пустой области)
-        const isDraggingEmpty = this.scene?.draggingFromEmptySpace && pointer.isDown;
+        this.isOutsideZoneBuffer = false; // Reset flag, will be set true if sliding snap occurs
+        this.outsideZoneDistance = 0;
 
-        // Логика примагничивания к краям/центрам зон
-        if (!newZone) {
+        if (currentPhysicalZone) {
+            // Pointer is IN a zone.
+            this.lastZonePosition = { x: pointerX, y: pointerY }; // Update last known good physical position
+            // effectiveX, effectiveY are pointerX, pointerY
+            // activeZoneForLogic is currentPhysicalZone
+            // snapPointForCursor will be determined by the drawing logic later (shows at pointerX,Y if hovered)
+        } else {
+            // Pointer is OUTSIDE a defined zone. Try snapping.
+
+            // --- Attempt 1: Sliding Snap (using ZONE_EXIT_BUFFER, typically 30px) ---
+            let slidingSnapData = null;
+            const boundaryInfo = this.findClosestPointOnArcBoundary(pointerX, pointerY);
+
+            if (boundaryInfo && boundaryInfo.point && boundaryInfo.zone) {
+                const distToBoundary = Phaser.Math.Distance.Between(pointerX, pointerY, boundaryInfo.point.x, boundaryInfo.point.y);
+                if (distToBoundary <= this.ZONE_EXIT_BUFFER) {
+                    slidingSnapData = {
+                        snapX: boundaryInfo.point.x,
+                        snapY: boundaryInfo.point.y,
+                        zone: boundaryInfo.zone,
+                        distance: distToBoundary
+                    };
+                }
+            }
+
+            // --- Attempt 2: Original Snapping (using SNAP_THRESHOLD/ENHANCED_SNAP_THRESHOLD, typically 10/20px) ---
+            let originalSnapData = null;
+            let internalSnapResult = null; // Mirrors 'snapResult' from original logic block
+
             if (this.car.getData('speed') === MIN_SPEED) {
-                snapResult = this.getSnapPointForReverseArc(pointerX, pointerY);
-            }
-            if (!snapResult) { // Если не задний ход или не примагнитились к нему
-                snapResult = this.getSnapPointForForwardArc(pointerX, pointerY);
+                internalSnapResult = this.getSnapPointForReverseArc(pointerX, pointerY);
             }
 
-            if (snapResult) {
-                newZone = snapResult.zone; // Используем зону из результата примагничивания
-                effectiveX = snapResult.snapX; // Используем примагниченные координаты
-                effectiveY = snapResult.snapY;
+            if (!internalSnapResult) {
+                if (this.accelerationBlockedBySwamp) {
+                    const ap = this.arcParams;
+                    if (ap && this.car && ap.innerRadius >= 0 && ap.neutralRadius > ap.innerRadius) {
+                        const carX = this.car.x;
+                        const carY = this.car.y;
+                        const dx = pointerX - carX;
+                        const dy = pointerY - carY;
+                        const _pointerAngle = Math.atan2(dy, dx);
+
+                        const orientation = ap.orientationRad;
+                        const halfAngle = ap.halfAngleRad;
+                        const globalStartAngle = orientation - halfAngle;
+                        const globalEndAngle = orientation + halfAngle;
+
+                        let candidates = [];
+                        candidates.push({ radius: ap.innerRadius });
+                        candidates.push({ radius: ap.neutralRadius });
+
+                        let bestCandidateSnap = null;
+                        let minDistance = Number.MAX_VALUE;
+
+                        for (let candidate of candidates) {
+                            let candidateAngle = _pointerAngle;
+                            if (!this.isAngleWithinRange(_pointerAngle, globalStartAngle, globalEndAngle)) {
+                                let diffStart = Math.abs(Phaser.Math.Angle.ShortestBetween(Phaser.Math.RadToDeg(_pointerAngle), Phaser.Math.RadToDeg(globalStartAngle)));
+                                let diffEnd = Math.abs(Phaser.Math.Angle.ShortestBetween(Phaser.Math.RadToDeg(_pointerAngle), Phaser.Math.RadToDeg(globalEndAngle)));
+                                candidateAngle = (diffStart < diffEnd) ? globalStartAngle : globalEndAngle;
+                            }
+                            const candidateX = carX + Math.cos(candidateAngle) * candidate.radius;
+                            const candidateY = carY + Math.sin(candidateAngle) * candidate.radius;
+                            const dist = Phaser.Math.Distance.Between(pointerX, pointerY, candidateX, candidateY);
+
+                            if (dist < minDistance) {
+                                minDistance = dist;
+                                bestCandidateSnap = { snapX: candidateX, snapY: candidateY, zone: 'brake' };
+                            }
+                        }
+                        const isPointerNearFullArc = this.isPointNearArc(pointerX, pointerY, SNAP_THRESHOLD);
+                        const currentSnapThreshold = isPointerNearFullArc ? SNAP_THRESHOLD : ENHANCED_SNAP_THRESHOLD;
+
+                        if (bestCandidateSnap && minDistance <= currentSnapThreshold) {
+                            internalSnapResult = bestCandidateSnap;
+                        }
+                    }
+                } else {
+                    internalSnapResult = this.getSnapPointForForwardArc(pointerX, pointerY);
+                }
+            }
+
+            if (internalSnapResult) {
+                originalSnapData = {
+                    snapX: internalSnapResult.snapX,
+                    snapY: internalSnapResult.snapY,
+                    zone: internalSnapResult.zone
+                };
+            }
+
+            // --- Decision time for snapping ---
+            if (slidingSnapData) {
+                effectiveX = slidingSnapData.snapX;
+                effectiveY = slidingSnapData.snapY;
+                activeZoneForLogic = slidingSnapData.zone;
+                snapPointForCursor = { x: slidingSnapData.snapX, y: slidingSnapData.snapY, zone: slidingSnapData.zone };
+                this.isOutsideZoneBuffer = true;
+                this.outsideZoneDistance = slidingSnapData.distance;
+            } else if (originalSnapData) {
+                effectiveX = originalSnapData.snapX;
+                effectiveY = originalSnapData.snapY;
+                activeZoneForLogic = originalSnapData.zone;
+                snapPointForCursor = { x: originalSnapData.snapX, y: originalSnapData.snapY, zone: originalSnapData.zone };
+                // isOutsideZoneBuffer remains false for original snap
+            } else {
+                // No snap, pointer is in empty space.
+                // effectiveX, effectiveY remain pointerX, pointerY
+                // activeZoneForLogic remains null
+                // snapPointForCursor remains null
             }
         }
 
-        // При альтернативном управлении всегда прикрепляем к краю арки, если нет обычного snap
-        // и мы не в промежутке между ускорением и нитро
-        if (isDraggingEmpty && !newZone && !snapResult) {
-            // Получаем ближайшую точку на арке
-            const forceSnapResult = this.getForceSnapPointOnArc(pointerX, pointerY);
-            if (forceSnapResult) {
-                newZone = forceSnapResult.zone;
-                effectiveX = forceSnapResult.snapX;
-                effectiveY = forceSnapResult.snapY;
-                snapResult = forceSnapResult;
-            }
+        // Final swamp check on the decided activeZoneForLogic
+        if (this.accelerationBlockedBySwamp && activeZoneForLogic !== 'brake' && activeZoneForLogic !== 'reverse') {
+            activeZoneForLogic = null;
+            snapPointForCursor = null; // If zone becomes null due to swamp, snap cursor data should also be cleared
+            effectiveX = pointerX;     // Revert to raw pointer if swamp nullifies the zone
+            effectiveY = pointerY;
+            this.isOutsideZoneBuffer = false; // Swamp overrides sliding state
         }
-
-        let keepCursor = false;
-
-        if (!newZone && isDraggingEmpty) {
-            keepCursor = true; // Сохраняем курсор-указатель при драге из пустоты
-        }
-
-        // Обновляем подсветку зоны арки
-        if (newZone !== this.hoveredArcZone) {
-            this.hoveredArcZone = newZone;
+        
+        // Update main state property for hovered zone
+        // (this.hoveredArcZone will be updated based on activeZoneForLogic)
+        if (activeZoneForLogic !== this.hoveredArcZone) {
+            this.hoveredArcZone = activeZoneForLogic;
             this.drawControlArc(); // Перерисовываем GUI арку с новой подсветкой
         }
-
-        // Обновляем точку примагничивания (snapCursor)
+        
+        // Update snap cursor graphic (the white dot)
         if (this.snapCursor) {
             this.snapCursor.clear();
-            if (snapResult) {
-                this.snapCursor.fillStyle(0xffffff, 1);
-                this.snapCursor.fillCircle(effectiveX, effectiveY, 3.5);
-            } else if (this.hoveredArcZone) {
-                 // Если есть зона, но нет snap'а (курсор внутри зоны), рисуем точку под курсором
-                 this.snapCursor.fillStyle(0xffffff, 0.7);
-                 this.snapCursor.fillCircle(pointerX, pointerY, 3.5);
+            if (snapPointForCursor) { // If any snap occurred (sliding or original) and resulted in a point
+                this.snapCursor.fillStyle(0xffffff, 1); // Solid for actual snap points
+                this.snapCursor.fillCircle(snapPointForCursor.x, snapPointForCursor.y, 3.5);
+            } else if (this.hoveredArcZone) { // If physically in a zone (no specific snap point, but zone is active)
+                this.snapCursor.fillStyle(0xffffff, 0.7); // Translucent for "in-zone" pointer indication
+                this.snapCursor.fillCircle(pointerX, pointerY, 3.5); // Show at raw pointer
             }
         }
+        
+        // Update cursor style (pointer/default)
+        const isDraggingEmpty = this.scene?.draggingFromEmptySpace && pointer.isDown;
+        let showPointerCursor = !!this.hoveredArcZone || this.isOutsideZoneBuffer;
+        if (!this.hoveredArcZone && isDraggingEmpty) { // Retain pointer if dragging from empty space even if no zone hovered
+             showPointerCursor = true;
+        }
 
-        // Устанавливаем стиль курсора
-        if (this.hoveredArcZone || keepCursor) {
+        if (showPointerCursor) {
              if(this.scene.game.canvas) this.scene.game.canvas.style.cursor = 'pointer';
         } else {
              if(this.scene.game.canvas) this.scene.game.canvas.style.cursor = 'default';
         }
 
-        // Рассчитываем и отрисовываем траекторию и призрака, если курсор в активной зоне или при альтернативном управлении
+        // Calculate currentArcData for trajectory and ghost car
+        // This uses `effectiveX`, `effectiveY`, and `this.hoveredArcZone` (which is activeZoneForLogic)
         if (this.hoveredArcZone) {
             if (this.hoveredArcZone === 'reverse') {
-                // Логика для заднего хода (прямая траектория)
                 const carAngleRad = Phaser.Math.DegToRad(this.car.angle);
                 const reverseAngleRad = carAngleRad + Math.PI;
                 const targetX = this.car.x + Math.cos(reverseAngleRad) * REVERSE_MOVE_DISTANCE;
                 const targetY = this.car.y + Math.sin(reverseAngleRad) * REVERSE_MOVE_DISTANCE;
-                const targetAngleRad = carAngleRad; // Угол машины не меняется при заднем ходе
-
+                const targetAngleRad = carAngleRad;
                 this.currentArcData = {
-                    isArc: false, // Помечаем, что это не дуга
+                    isArc: false,
                     startX: this.car.x,
                     startY: this.car.y,
                     targetX: targetX,
                     targetY: targetY,
                     targetAngleRad: targetAngleRad,
                     moveDistance: REVERSE_MOVE_DISTANCE,
-                    zone: 'reverse' // Добавляем информацию о зоне
+                    zone: 'reverse'
                 };
-
-                this.drawTrajectory(this.currentArcData); // Передаем объект arcData
+                this.drawTrajectory(this.currentArcData);
                 if (this.ghostCar) {
                     this.ghostCar.setPosition(targetX, targetY)
                         .setAngle(Phaser.Math.RadToDeg(targetAngleRad))
                         .setVisible(true);
                 }
-
-            } else {
-                // Логика для переднего хода (дуга или прямая)
-                // Получаем зону ДО вызова calculateTarget
-                const currentZone = this.hoveredArcZone; // или snapResult?.zone, если есть snap
-                const arcData = this.calculateTargetFromArcPoint(effectiveX, effectiveY, currentZone); // Передаем зону
-                this.currentArcData = arcData; // Сохраняем рассчитанные данные
-
-                // Используем более строгую проверку - убедимся, что isArc определено
+            } else { // Covers 'brake', 'accelerate', 'red'
+                const currentProcessingZone = this.hoveredArcZone;
+                // Use effectiveX, effectiveY for calculations
+                const arcData = this.calculateTargetFromArcPoint(effectiveX, effectiveY, currentProcessingZone);
+                this.currentArcData = arcData;
                 if (arcData && arcData.isArc !== undefined) {
-                    this.drawTrajectory(arcData); // Рисуем прямую или дугу
+                    this.drawTrajectory(arcData);
                     if (this.ghostCar) {
-                        // Явно используем данные из arcData
-                         const displayAngle = Phaser.Math.RadToDeg(arcData.targetAngleRad);
-                         const displayX = arcData.targetX;
-                         const displayY = arcData.targetY;
-
+                        const displayAngle = Phaser.Math.RadToDeg(arcData.targetAngleRad);
+                        const displayX = arcData.targetX;
+                        const displayY = arcData.targetY;
                         this.ghostCar.setPosition(displayX, displayY)
                             .setAngle(displayAngle)
                             .setVisible(true);
                     }
                 } else {
-                    // Скрываем, если calculateTarget вернул null или невалидный объект
                     this.currentArcData = null;
                     if (this.ghostCar) this.ghostCar.setVisible(false);
                     if (this.trajectoryGraphics) this.trajectoryGraphics.clear();
                 }
             }
         } else {
-            // Если курсор не в зоне, скрываем всё
             this.currentArcData = null;
             if (this.ghostCar) this.ghostCar.setVisible(false);
             if (this.trajectoryGraphics) this.trajectoryGraphics.clear();
-            // Snap cursor уже очищен выше
         }
     }
 
@@ -896,16 +967,10 @@ class ArcController {
             }
         }
 
-        // Проверяем наличие штрафа за болото
-        let effectiveMaxMoveDistanceFactor = MAX_MOVE_DISTANCE_FACTOR;
-        if (this.car.getData('swampPenaltyActive')) {
-            // Уменьшаем MAX_MOVE_DISTANCE_FACTOR на 1 при активном штрафе болота
-            effectiveMaxMoveDistanceFactor = Math.max(MIN_MOVE_DISTANCE_FACTOR, MAX_MOVE_DISTANCE_FACTOR - 0.5);
-        }
-
         // 3. Рассчитываем общую длину хода (длину дуги)
         const currentMidRadius = ap.innerRadius + arcThickness / 2;
-        const baseDist = Phaser.Math.Linear(MIN_MOVE_DISTANCE_FACTOR * currentMidRadius, effectiveMaxMoveDistanceFactor * currentMidRadius, relativeClickDistOverallArc);
+        const dynamicMinMoveDistanceFactor = MIN_MOVE_DISTANCE_FACTOR + (0.4 * currentSpeed); // Новая строка
+        const baseDist = Phaser.Math.Linear(dynamicMinMoveDistanceFactor * currentMidRadius, MAX_MOVE_DISTANCE_FACTOR * currentMidRadius, relativeClickDistOverallArc); // Измененная строка
         const arcLength = baseDist + currentSpeed * SPEED_TO_DISTANCE_MULTIPLIER;
 
         // 4. Рассчитываем угол отклонения клика от оси машины
@@ -989,7 +1054,14 @@ class ArcController {
     // --- Методы инициации движения ---
 
     handleSceneClick(pointer) {
-        if (!this.car || this.scene.isMoving) return null; // Добавил проверку isMoving
+        if (!this.car || this.scene.isMoving) return null;
+        // --- Если болото, разрешаем только тормоз и задний ход ---
+        if (this.accelerationBlockedBySwamp) {
+            if (this.hoveredArcZone !== 'brake' && this.hoveredArcZone !== 'reverse') {
+                return null;
+            }
+        }
+        if (this.blockedBySwamp) return null;
 
         const clickX = pointer.worldX;
         const clickY = pointer.worldY;
@@ -1047,7 +1119,8 @@ class ArcController {
                  targetY: moveData.targetY,
                  turnDuration: moveData.turnDuration, // Может быть не нужно, если используем moveTime
                  moveTime: moveData.moveTime,
-                 arcData: finalArcData // Сохраняем все рассчитанные параметры с явно установленным isArc!
+                 arcData: finalArcData, // Сохраняем все рассчитанные параметры с явно установленным isArc!
+                 isNitroUsed: clickArcZone === 'red' // ADDED: Set isNitroUsed based on clickArcZone
              };
              console.log("Adding to history:", { 
                  zone: clickArcZone, 
@@ -1088,25 +1161,16 @@ class ArcController {
         let speedForNextTurn = currentSpeed;
         let nextNitroAvailable = this.car.getData('nitroAvailable') ?? NITRO_AVAILABLE_BY_DEFAULT;
 
-        // Проверяем, находится ли машина на болоте
-        const isOnSwamp = this.scene.swampGroup.getChildren().some(swamp => 
-            Phaser.Math.Distance.Between(this.car.x, this.car.y, swamp.x, swamp.y) < GRID_CELL_SIZE
-        );
-
-        // Расчет скорости для следующего хода с учетом болота
+        // Расчет скорости для следующего хода
         if (clickArcZone === 'accelerate' || clickArcZone === 'brake') {
-            const speedFactor = (arcData.relativeClickDistInWorkingZone < 0) ? 0.75 : 1.0;
+            const speedFactor = (arcData.relativeClickDistInWorkingZone < 0) ? BRAKE_SPEED_FACTOR : 1.0;
             const baseSpeedChange = arcData.relativeClickDistInWorkingZone * SPEED_INCREMENT * speedFactor;
-            // Применяем штраф к изменению скорости, если машина на болоте
-            const speedChange = isOnSwamp ? baseSpeedChange * SWAMP_SPEED_INCREMENT_PENALTY : baseSpeedChange;
-            speedForNextTurn = currentSpeed + speedChange;
+            speedForNextTurn = currentSpeed + baseSpeedChange;
             // Важно: для зон кроме red всегда сохраняем текущее значение nitroAvailable
             nextNitroAvailable = this.car.getData('nitroAvailable') ?? NITRO_AVAILABLE_BY_DEFAULT;
         } else if (clickArcZone === 'red') {
             const baseSpeedBoost = RED_ZONE_SPEED_BOOST;
-            // Применяем штраф к бусту скорости, если машина на болоте
-            const speedBoost = isOnSwamp ? baseSpeedBoost * SWAMP_SPEED_INCREMENT_PENALTY : baseSpeedBoost;
-            speedForNextTurn = currentSpeed + speedBoost;
+            speedForNextTurn = currentSpeed + baseSpeedBoost;
             nextNitroAvailable = false; // Использовали нитро, удаляем его из инвентаря
         }
         speedForNextTurn = Phaser.Math.Clamp(speedForNextTurn, MIN_SPEED, MAX_SPEED);
@@ -1306,6 +1370,253 @@ class ArcController {
             moveTime: moveTime,
             turnDuration: 0
         };
+    }
+
+    // Добавляем новый метод для нахождения ближайшей точки на границе арки
+    findClosestPointOnArcBoundary(pointerX, pointerY) {
+        if (!this.car || !this.arcParams) return null;
+        
+        const ap = this.arcParams;
+        const cx = this.car.x;
+        const cy = this.car.y;
+        
+        // Получаем угол и расстояние от центра до указателя
+        const dx = pointerX - cx;
+        const dy = pointerY - cy;
+        const pointerAngle = Math.atan2(dy, dx);
+        const pointerDistance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Получаем ориентацию арки и половину угла
+        const orientation = ap.orientationRad;
+        const halfAngle = ap.halfAngleRad;
+        
+        // Определяем, находится ли указатель внутри угловых границ
+        const angleWithinArc = this.isAngleWithinRange(pointerAngle, orientation - halfAngle, orientation + halfAngle);
+        
+        // Проверяем доступность нитро
+        const nitroAvailable = this.car.getData('nitroAvailable') ?? NITRO_AVAILABLE_BY_DEFAULT;
+        
+        // Вычисляем внутренний радиус зоны нитро (середину между рабочим и внешним)
+        const actualRedInnerRadius = nitroAvailable ? (ap.workingRadius + ap.outerRadius) / 2 : 0;
+        
+        // Определяем максимальный радиус арки в зависимости от доступности нитро
+        const maxRadiusArc = nitroAvailable ? ap.outerRadius : ap.workingRadius;
+        const minRadiusArc = ap.innerRadius;
+        
+        // Определяем, находится ли указатель внутри "мертвой зоны" между ускорением и нитро
+        const isInDeadZone = nitroAvailable && 
+                             pointerDistance > ap.workingRadius && 
+                             pointerDistance < actualRedInnerRadius && 
+                             angleWithinArc;
+        
+        // Определяем, находится ли указатель внутри радиальных границ с учетом доступности нитро
+        let distanceWithinArc = false;
+        if (nitroAvailable) {
+            // Если нитро доступно, проверяем все зоны, исключая "мертвую зону"
+            distanceWithinArc = (pointerDistance >= minRadiusArc && pointerDistance <= maxRadiusArc && 
+                                !(pointerDistance > ap.workingRadius && pointerDistance < actualRedInnerRadius));
+        } else {
+            // Если нитро недоступно, проверяем только до рабочего радиуса
+            distanceWithinArc = (pointerDistance >= minRadiusArc && pointerDistance <= ap.workingRadius);
+        }
+        
+        let closestPoint = { x: pointerX, y: pointerY };
+        let zone = null;
+        
+        // Особый случай - указатель в "мертвой зоне" между ускорением и нитро
+        if (isInDeadZone) {
+            // Находим ближайшую радиальную границу (либо край ускорения, либо начало нитро)
+            const distToWorkingRadius = Math.abs(pointerDistance - ap.workingRadius);
+            const distToRedInnerRadius = Math.abs(pointerDistance - actualRedInnerRadius);
+            
+            // Выбираем ближайшую границу
+            if (distToWorkingRadius <= distToRedInnerRadius) {
+                // Ближе к зоне ускорения
+                closestPoint.x = cx + Math.cos(pointerAngle) * ap.workingRadius;
+                closestPoint.y = cy + Math.sin(pointerAngle) * ap.workingRadius;
+                zone = 'accelerate';
+            } else {
+                // Ближе к зоне нитро (только если нитро доступно)
+                closestPoint.x = cx + Math.cos(pointerAngle) * actualRedInnerRadius;
+                closestPoint.y = cy + Math.sin(pointerAngle) * actualRedInnerRadius;
+                zone = 'red'; // Здесь проверка nitroAvailable не нужна, т.к. isInDeadZone уже проверяет это
+            }
+            
+            return { point: closestPoint, zone: zone };
+        }
+        
+        // Если указатель вне угловых границ, но внутри радиальных
+        if (!angleWithinArc && distanceWithinArc) {
+            // Находим ближайшую боковую границу
+            const angleDiffStart = Math.abs(Phaser.Math.Angle.ShortestBetween(
+                Phaser.Math.RadToDeg(pointerAngle), 
+                Phaser.Math.RadToDeg(orientation - halfAngle)
+            ));
+            const angleDiffEnd = Math.abs(Phaser.Math.Angle.ShortestBetween(
+                Phaser.Math.RadToDeg(pointerAngle), 
+                Phaser.Math.RadToDeg(orientation + halfAngle)
+            ));
+            
+            // Выбираем ближайшую границу
+            const closestBorderAngle = (angleDiffStart < angleDiffEnd) ? 
+                (orientation - halfAngle) : (orientation + halfAngle);
+            
+            // Вычисляем точку на этой границе с тем же расстоянием от центра
+            closestPoint.x = cx + Math.cos(closestBorderAngle) * pointerDistance;
+            closestPoint.y = cy + Math.sin(closestBorderAngle) * pointerDistance;
+            
+            // Определяем зону в зависимости от расстояния и доступности нитро
+            if (pointerDistance <= ap.neutralRadius) {
+                zone = 'brake';
+            } else if (pointerDistance <= ap.workingRadius) {
+                zone = 'accelerate';
+            } else if (nitroAvailable && pointerDistance >= actualRedInnerRadius) {
+                zone = 'red';
+            } else {
+                // Если нитро недоступно, но радиус больше рабочего, приводим к границе рабочего
+                closestPoint.x = cx + Math.cos(closestBorderAngle) * ap.workingRadius;
+                closestPoint.y = cy + Math.sin(closestBorderAngle) * ap.workingRadius;
+                zone = 'accelerate';
+            }
+        } 
+        // Если указатель вне радиальных границ, но внутри угловых
+        else if (angleWithinArc && !distanceWithinArc) {
+            // Определяем, находится ли указатель за границами арки
+            if (pointerDistance > maxRadiusArc) {
+                // За внешней границей (учитывая доступность нитро)
+                closestPoint.x = cx + Math.cos(pointerAngle) * maxRadiusArc;
+                closestPoint.y = cy + Math.sin(pointerAngle) * maxRadiusArc;
+                zone = nitroAvailable && maxRadiusArc > ap.workingRadius ? 'red' : 'accelerate';
+            } 
+            // Если указатель вне внутренней границы арки
+            else if (pointerDistance < ap.innerRadius) {
+                closestPoint.x = cx + Math.cos(pointerAngle) * ap.innerRadius;
+                closestPoint.y = cy + Math.sin(pointerAngle) * ap.innerRadius;
+                zone = 'brake';
+            }
+            // Если нитро недоступно и указатель за рабочим радиусом
+            else if (!nitroAvailable && pointerDistance > ap.workingRadius) {
+                closestPoint.x = cx + Math.cos(pointerAngle) * ap.workingRadius;
+                closestPoint.y = cy + Math.sin(pointerAngle) * ap.workingRadius;
+                zone = 'accelerate';
+            }
+            // Если нитро доступно, но указатель в "мертвой зоне"
+            else if (nitroAvailable && pointerDistance > ap.workingRadius && pointerDistance < actualRedInnerRadius) {
+                // Определяем ближайшую границу зоны
+                const distToWorkingRadius = Math.abs(pointerDistance - ap.workingRadius);
+                const distToRedInnerRadius = Math.abs(pointerDistance - actualRedInnerRadius);
+                
+                if (distToWorkingRadius <= distToRedInnerRadius) {
+                    closestPoint.x = cx + Math.cos(pointerAngle) * ap.workingRadius;
+                    closestPoint.y = cy + Math.sin(pointerAngle) * ap.workingRadius;
+                    zone = 'accelerate';
+                } else {
+                    closestPoint.x = cx + Math.cos(pointerAngle) * actualRedInnerRadius;
+                    closestPoint.y = cy + Math.sin(pointerAngle) * actualRedInnerRadius;
+                    zone = 'red';
+                }
+            }
+        }
+        // Если указатель вне обоих границ (и угловых, и радиальных)
+        else if (!angleWithinArc && !distanceWithinArc) {
+            // Находим ближайшую угловую границу
+            const angleDiffStart = Math.abs(Phaser.Math.Angle.ShortestBetween(
+                Phaser.Math.RadToDeg(pointerAngle), 
+                Phaser.Math.RadToDeg(orientation - halfAngle)
+            ));
+            const angleDiffEnd = Math.abs(Phaser.Math.Angle.ShortestBetween(
+                Phaser.Math.RadToDeg(pointerAngle), 
+                Phaser.Math.RadToDeg(orientation + halfAngle)
+            ));
+            
+            // Выбираем ближайшую угловую границу
+            const closestBorderAngle = (angleDiffStart < angleDiffEnd) ? 
+                (orientation - halfAngle) : (orientation + halfAngle);
+            
+            // Определяем корректный радиус в зависимости от расстояния и доступности нитро
+            let clampedRadius;
+            
+            if (pointerDistance < ap.innerRadius) {
+                clampedRadius = ap.innerRadius;
+                zone = 'brake';
+            } else if (pointerDistance > maxRadiusArc) {
+                clampedRadius = maxRadiusArc;
+                zone = nitroAvailable && maxRadiusArc > ap.workingRadius ? 'red' : 'accelerate';
+            } else if (!nitroAvailable && pointerDistance > ap.workingRadius) {
+                clampedRadius = ap.workingRadius;
+                zone = 'accelerate';
+            } else if (nitroAvailable && pointerDistance > ap.workingRadius && pointerDistance < actualRedInnerRadius) {
+                // В "мертвой зоне" - выбираем ближайшую границу
+                const distToWorkingRadius = Math.abs(pointerDistance - ap.workingRadius);
+                const distToRedInnerRadius = Math.abs(pointerDistance - actualRedInnerRadius);
+                
+                if (distToWorkingRadius <= distToRedInnerRadius) {
+                    clampedRadius = ap.workingRadius;
+                    zone = 'accelerate';
+                } else {
+                    clampedRadius = actualRedInnerRadius;
+                    zone = 'red';
+                }
+            } else if (pointerDistance <= ap.neutralRadius) {
+                clampedRadius = pointerDistance;
+                zone = 'brake';
+            } else if (pointerDistance <= ap.workingRadius) {
+                clampedRadius = pointerDistance;
+                zone = 'accelerate';
+            } else if (nitroAvailable && pointerDistance >= actualRedInnerRadius) {
+                clampedRadius = pointerDistance;
+                zone = 'red';
+            } else {
+                // Если все проверки не сработали, используем безопасные значения
+                clampedRadius = Phaser.Math.Clamp(pointerDistance, ap.innerRadius, maxRadiusArc);
+                
+                // Определяем зону по радиусу
+                if (clampedRadius <= ap.neutralRadius) {
+                    zone = 'brake';
+                } else if (clampedRadius <= ap.workingRadius) {
+                    zone = 'accelerate';
+                } else if (nitroAvailable && clampedRadius >= actualRedInnerRadius) {
+                    zone = 'red';
+                } else {
+                    // Финальная проверка - если как-то пропустили условие
+                    zone = 'accelerate';
+                }
+            }
+            
+            // Вычисляем точку на границе
+            closestPoint.x = cx + Math.cos(closestBorderAngle) * clampedRadius;
+            closestPoint.y = cy + Math.sin(closestBorderAngle) * clampedRadius;
+        }
+
+        // Финальная проверка - никогда не возвращаем 'red', если нитро недоступно
+        if (zone === 'red' && !nitroAvailable) {
+            zone = 'accelerate';
+            // И корректируем позицию к границе зоны ускорения
+            const correctedRadius = ap.workingRadius;
+            if (angleWithinArc) {
+                closestPoint.x = cx + Math.cos(pointerAngle) * correctedRadius;
+                closestPoint.y = cy + Math.sin(pointerAngle) * correctedRadius;
+            } else {
+                // Находим ближайшую угловую границу
+                const angleDiffStart = Math.abs(Phaser.Math.Angle.ShortestBetween(
+                    Phaser.Math.RadToDeg(pointerAngle), 
+                    Phaser.Math.RadToDeg(orientation - halfAngle)
+                ));
+                const angleDiffEnd = Math.abs(Phaser.Math.Angle.ShortestBetween(
+                    Phaser.Math.RadToDeg(pointerAngle), 
+                    Phaser.Math.RadToDeg(orientation + halfAngle)
+                ));
+                
+                // Выбираем ближайшую угловую границу
+                const closestBorderAngle = (angleDiffStart < angleDiffEnd) ? 
+                    (orientation - halfAngle) : (orientation + halfAngle);
+                    
+                closestPoint.x = cx + Math.cos(closestBorderAngle) * correctedRadius;
+                closestPoint.y = cy + Math.sin(closestBorderAngle) * correctedRadius;
+            }
+        }
+
+        return { point: closestPoint, zone: zone };
     }
 }
 
