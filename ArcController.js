@@ -1138,24 +1138,104 @@ class ArcController {
     initiateForwardMove(arcData, clickArcZone) {
         if (!this.car?.body || !arcData) return null;
 
-        // --- Начало: Логика скольжения ---
-        const isSnowBiome = this.scene.currentBiome === BIOME_SNOW;
-        let finalTargetX = arcData.targetX;
-        let finalTargetY = arcData.targetY;
-        // Рассчитываем "прямое" расстояние от старта до предсказанной точки финиша
+        // --- Начало: Получение инерции с предыдущего хода ---
+        const isSnowBiome = this.scene.currentBiome === BIOME_SNOW; // Определяем биом здесь
+        const prevLateralVelocity = this.car.getData('lateralVelocity') ?? 0;
+        const prevLateralDirection = this.car.getData('lateralVelocityDirection') ?? 0;
+
+        if (Math.abs(prevLateralVelocity) > 0.01) { // Используем очень маленький порог для очистки
+            this.car.setData('lateralVelocity', 0);
+            this.car.setData('lateralVelocityDirection', 0);
+            // console.log(`Cleared previous lateral velocity (Mag: ${prevLateralVelocity.toFixed(2)}) from car data after reading.`);
+        }
+        // --- Конец: Получение инерции с предыдущего хода ---
+
+        let currentTurnSkidTargetX = arcData.targetX;
+        let currentTurnSkidTargetY = arcData.targetY;
         const originalMoveDistance = Phaser.Math.Distance.Between(this.car.x, this.car.y, arcData.targetX, arcData.targetY);
 
+        // --- Начало: Расчет собственного заноса текущего хода и сохранение новой инерции для СЛЕДУЮЩЕГО хода ---
         if (isSnowBiome && originalMoveDistance > 0) {
-            const skidDistance = originalMoveDistance * SNOW_SKID_FACTOR;
-            // Находим единичный вектор направления от старта к предсказанному финишу
-            const dirX = (arcData.targetX - this.car.x) / originalMoveDistance;
-            const dirY = (arcData.targetY - this.car.y) / originalMoveDistance;
-            // Смещаем финальную точку вдоль этого вектора на skidDistance
-            finalTargetX = arcData.targetX + dirX * skidDistance;
-            finalTargetY = arcData.targetY + dirY * skidDistance;
-            console.log(`Snow Skid: Original Target (${arcData.targetX.toFixed(1)}, ${arcData.targetY.toFixed(1)}), Final Target (${finalTargetX.toFixed(1)}, ${finalTargetY.toFixed(1)}), Skid Dist: ${skidDistance.toFixed(1)}`);
+            const currentTurnSkidFactor = SNOW_SKID_FACTOR; // Фактор заноса для текущего хода
+            const skidDistance = originalMoveDistance * currentTurnSkidFactor;
+
+            // Направление от старта машины к цели *до* заноса (arcData.targetX/Y)
+            const preSkidDirX = (arcData.targetX - this.car.x) / originalMoveDistance;
+            const preSkidDirY = (arcData.targetY - this.car.y) / originalMoveDistance;
+
+            // Точка, где машина оказалась бы *после* собственного заноса текущего хода, *без учета* прошлой инерции
+            currentTurnSkidTargetX = arcData.targetX + preSkidDirX * skidDistance;
+            currentTurnSkidTargetY = arcData.targetY + preSkidDirY * skidDistance;
+            // console.log(`Snow Skid (Current Turn): Original Target (${arcData.targetX.toFixed(1)}, ${arcData.targetY.toFixed(1)}), After Current Skid (${currentTurnSkidTargetX.toFixed(1)}, ${currentTurnSkidTargetY.toFixed(1)}), Skid Dist: ${skidDistance.toFixed(1)}`);
+
+            // Вектор собственного заноса текущего хода (от точки arcData.targetX/Y к currentTurnSkidTargetX/Y)
+            const currentSkidEffectVectorX = currentTurnSkidTargetX - arcData.targetX;
+            const currentSkidEffectVectorY = currentTurnSkidTargetY - arcData.targetY;
+
+            // Направление движения машины *после* собственного заноса текущего хода (от this.car.x/y к currentTurnSkidTargetX/Y)
+            const postCurrentSkidMoveX = currentTurnSkidTargetX - this.car.x;
+            const postCurrentSkidMoveY = currentTurnSkidTargetY - this.car.y;
+            const postCurrentSkidMoveMagnitude = Math.sqrt(postCurrentSkidMoveX * postCurrentSkidMoveX + postCurrentSkidMoveY * postCurrentSkidMoveY);
+
+            if (postCurrentSkidMoveMagnitude > 0) {
+                const finalDirAfterCurrentSkidX = postCurrentSkidMoveX / postCurrentSkidMoveMagnitude;
+                const finalDirAfterCurrentSkidY = postCurrentSkidMoveY / postCurrentSkidMoveMagnitude;
+
+                const lateralVecX = -finalDirAfterCurrentSkidY; // Перпендикуляр
+                const lateralVecY = finalDirAfterCurrentSkidX;
+
+                // Проекция вектора *эффекта заноса текущего хода* на латеральное направление
+                const dotProduct = currentSkidEffectVectorX * lateralVecX + currentSkidEffectVectorY * lateralVecY;
+                const newLateralVelocity = Math.abs(dotProduct);
+                const newLateralDirection = Math.sign(dotProduct);
+
+                if (Math.abs(newLateralVelocity) > 0.01) {
+                    this.car.setData('lateralVelocity', newLateralVelocity); // Сохраняем НОВУЮ инерцию для СЛЕДУЮЩЕГО хода
+                    this.car.setData('lateralVelocityDirection', newLateralDirection);
+                    // console.log(`Stored NEW Lateral Velocity for next turn: Magnitude=${newLateralVelocity.toFixed(2)}, Direction=${newLateralDirection}`);
+                } else {
+                    this.car.setData('lateralVelocity', 0);
+                    this.car.setData('lateralVelocityDirection', 0);
+                }
+            } else {
+                this.car.setData('lateralVelocity', 0);
+                this.car.setData('lateralVelocityDirection', 0);
+            }
+        } else {
+            // Если не снежный биом или нет движения, новая боковая скорость для следующего хода равна 0
+            this.car.setData('lateralVelocity', 0);
+            this.car.setData('lateralVelocityDirection', 0);
         }
-        // --- Конец: Логика скольжения ---
+        // --- Конец: Расчет собственного заноса текущего хода ---
+
+        // --- Начало: Применение инерции бокового скольжения с ПРЕДЫДУЩЕГО хода к ЦЕЛИ ТЕКУЩЕГО хода ---
+        // finalTargetX/Y теперь будут учитывать И собственный занос текущего хода И инерцию прошлого хода.
+        let finalTargetX = currentTurnSkidTargetX; // Начинаем с точки после собственного заноса
+        let finalTargetY = currentTurnSkidTargetY;
+
+        if (isSnowBiome && Math.abs(prevLateralVelocity) > 0.1) { // Применяем, если есть значимая боковая скорость с прошлого хода
+            // console.log(`Applying Previous Lateral Velocity: Magnitude=${prevLateralVelocity.toFixed(2)}, Direction=${prevLateralDirection}`);
+
+            // Основное направление движения текущего хода (это вектор от this.car.x/y к currentTurnSkidTargetX/Y)
+            const currentIntendedMoveX = currentTurnSkidTargetX - this.car.x;
+            const currentIntendedMoveY = currentTurnSkidTargetY - this.car.y;
+            const currentIntendedMoveMagnitude = Math.sqrt(currentIntendedMoveX * currentIntendedMoveX + currentIntendedMoveY * currentIntendedMoveY);
+
+            if (currentIntendedMoveMagnitude > 0) {
+                const currentIntendedDirX = currentIntendedMoveX / currentIntendedMoveMagnitude;
+                const currentIntendedDirY = currentIntendedMoveY / currentIntendedMoveMagnitude;
+
+                // Латеральный вектор для применения прошлой инерции, ортогональный currentIntendedDir
+                const inertiaApplicationLateralVecX = -currentIntendedDirY * prevLateralDirection;
+                const inertiaApplicationLateralVecY = currentIntendedDirX * prevLateralDirection;
+
+                // Добавляем смещение от прошлой инерции к finalTargetX и finalTargetY
+                finalTargetX += inertiaApplicationLateralVecX * prevLateralVelocity;
+                finalTargetY += inertiaApplicationLateralVecY * prevLateralVelocity;
+                // console.log(`After applying previous inertia: Final Target (${finalTargetX.toFixed(1)}, ${finalTargetY.toFixed(1)})`);
+            }
+        }
+        // --- Конец: Применение инерции с предыдущего хода ---
 
         const currentSpeed = this.car.getData('speed') ?? MIN_SPEED;
         let speedForNextTurn = currentSpeed;
